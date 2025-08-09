@@ -1,0 +1,273 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                     String                  @id @default(cuid())
+  userId                 String?                 @unique
+  email                  String                  @unique
+  password               String
+  name                   String
+  birthDate              DateTime?
+  role                   UserRole                @default(STAFF)
+  partnerId              String?
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+  departureEnabled       Boolean                 @default(false)
+  gpsEnabled             Boolean                 @default(true)
+  wakeUpEnabled          Boolean                 @default(false)
+  defaultLocation        String?
+  customRoleId           String?
+  attendances            Attendance[]
+  lockedCommutePasses    CommutePass[]           @relation("CommutePassLocker")
+  commutePasses          CommutePass[]
+  lockedExpenses         Expense[]               @relation("ExpenseLocker")
+  expenses               Expense[]
+  shifts                 Shift[]
+  shiftRegistrationLocks ShiftRegistrationLock[]
+  shiftRequests          ShiftRequest[]
+  customRole             CustomRole?             @relation(fields: [customRoleId], references: [id])
+  managers               User[]                  @relation("UserManagers")
+  managedUsers           User[]                  @relation("UserManagers")
+  partner                Partner?                @relation(fields: [partnerId], references: [id])
+
+  @@index([partnerId])
+  @@index([customRoleId])
+  @@index([partnerId, customRoleId])
+}
+
+model Partner {
+  id                String    @id @default(cuid())
+  name              String
+  userIdPrefix      String    @unique
+  address           String?
+  phoneNumber       String?
+  email             String?
+  contactPerson     String?
+  contractStartDate DateTime?
+  contractEndDate   DateTime?
+  notes             String?
+  isActive          Boolean   @default(true)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  users             User[]
+}
+
+model Attendance {
+  id          String         @id @default(cuid())
+  userId      String
+  date        DateTime
+  type        AttendanceType
+  clockTime   DateTime
+  latitude    Float?
+  longitude   Float?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  user        User           @relation(fields: [userId], references: [id])
+  corrections Correction[]
+
+  @@index([userId, date])
+  @@index([userId, type, date])
+}
+
+model Correction {
+  id           String           @id @default(cuid())
+  attendanceId String
+  oldTime      DateTime
+  newTime      DateTime
+  reason       String
+  status       CorrectionStatus
+  comment      String?
+  approvedBy   String?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  attendance   Attendance       @relation(fields: [attendanceId], references: [id])
+
+  @@index([attendanceId])
+}
+
+model ShiftRequest {
+  id          String   @id @default(cuid())
+  userId      String
+  date        DateTime
+  isAvailable Boolean
+  note        String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id])
+
+  @@unique([userId, date])
+  @@index([userId])
+}
+
+model Shift {
+  id        String      @id @default(cuid())
+  userId    String
+  date      DateTime
+  startTime DateTime
+  endTime   DateTime
+  shiftType ShiftType
+  location  String
+  status    ShiftStatus @default(PENDING)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  breakTime Int?
+  note      String?
+  user      User        @relation(fields: [userId], references: [id])
+
+  @@index([userId, date])
+  @@index([userId, status, date])
+  @@index([date, status])
+}
+
+model Project {
+  id            String   @id @default(cuid())
+  name          String
+  client        String
+  location      String
+  description   String?
+  contractPrice Float?
+  paymentPrice  Float?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Expense {
+  id           String        @id @default(cuid())
+  userId       String
+  date         DateTime
+  type         ExpenseType
+  amount       Float
+  description  String?       @db.Text
+  departure    String?
+  arrival      String?
+  route        String?       @db.Text
+  referenceUrl String?
+  status       ExpenseStatus
+  comment      String?       @db.Text
+  approvedBy   String?
+  isLocked     Boolean       @default(false)
+  lockedBy     String?
+  lockedAt     DateTime?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  imageUrl     String?
+  validUntil   DateTime?
+  tripType     String?
+  validFrom    DateTime?
+  locker       User?         @relation("ExpenseLocker", fields: [lockedBy], references: [id])
+  user         User          @relation(fields: [userId], references: [id])
+
+  @@index([userId, date])
+  @@index([userId, status, date])
+  @@index([userId, type, date])
+  @@index([date, status])
+  @@index([lockedBy], map: "Expense_lockedBy_fkey")
+}
+
+model CommutePass {
+  id           String    @id @default(cuid())
+  userId       String
+  startStation String
+  endStation   String
+  validFrom    DateTime
+  validUntil   DateTime
+  imageUrl     String?
+  isLocked     Boolean   @default(false)
+  lockedBy     String?
+  lockedAt     DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  locker       User?     @relation("CommutePassLocker", fields: [lockedBy], references: [id])
+  user         User      @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([lockedBy], map: "CommutePass_lockedBy_fkey")
+}
+
+model ShiftRegistrationLock {
+  id         String    @id @default(cuid())
+  userId     String
+  year       Int
+  month      Int
+  isUnlocked Boolean   @default(false)
+  unlockedBy String?
+  unlockedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  user       User      @relation(fields: [userId], references: [id])
+
+  @@unique([userId, year, month])
+  @@index([userId])
+}
+
+model SystemSetting {
+  id                        String   @id @default(cuid())
+  companyName               String?
+  companyUserIdPrefix       String?
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+  headerCopyright           String?
+  shiftApprovalDeadlineDays Int      @default(3)
+}
+
+model CustomRole {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  displayName String
+  isSystem    Boolean  @default(false)
+  permissions Json
+  pageAccess  Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  users       User[]
+}
+
+enum AttendanceType {
+  CLOCK_IN
+  CLOCK_OUT
+  WAKE_UP
+  DEPARTURE
+}
+
+enum CorrectionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum ShiftType {
+  REGULAR
+  SPOT
+}
+
+enum ShiftStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum ExpenseType {
+  TRANSPORT
+  LODGING
+  COMMUTE_PASS
+}
+
+enum ExpenseStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum UserRole {
+  STAFF
+  MANAGER
+  ADMIN
+  SUPER_ADMIN
+}

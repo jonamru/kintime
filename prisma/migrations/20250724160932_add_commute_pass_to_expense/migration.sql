@@ -1,0 +1,4 @@
+-- AlterTable
+ALTER TABLE `Expense` ADD COLUMN `imageUrl` VARCHAR(191) NULL,
+    ADD COLUMN `validUntil` DATETIME(3) NULL,
+    MODIFY `type` ENUM('TRANSPORT', 'LODGING', 'COMMUTE_PASS') NOT NULL;
