@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>スマホ対応 勤怠管理ダッシュボード</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --primary-color: #4A90E2;
+            --secondary-color: #50E3C2;
+            --background-color: #f4f7fc;
+            --card-background-color: #ffffff;
+            --text-color: #333;
+            --subtext-color: #777;
+            --border-color: #e0e0e0;
+            --shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        }
+
+        body {
+            font-family: 'Noto Sans JP', sans-serif;
+            margin: 0;
+            background-color: var(--background-color);
+            color: var(--text-color);
+            display: flex;
+        }
+
+        /* --- サイドバー (PC) --- */
+        .sidebar {
+            width: 260px;
+            background-color: var(--card-background-color);
+            height: 100vh;
+            padding: 20px;
+            box-sizing: border-box;
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            position: fixed; /* For responsive behavior */
+            left: 0;
+            top: 0;
+            transition: transform 0.3s ease-in-out;
+            z-index: 1000;
+        }
+        .sidebar-header {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--primary-color);
+            margin-bottom: 30px;
+            text-align: center;
+        }
+        .sidebar-menu h3 {
+            font-size: 14px;
+            color: var(--subtext-color);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+        .sidebar-menu ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        .sidebar-menu li a {
+            display: flex;
+            align-items: center;
+            padding: 12px 15px;
+            color: var(--text-color);
+            text-decoration: none;
+            border-radius: 8px;
+            transition: background-color 0.3s, color 0.3s;
+            font-weight: 500;
+        }
+        .sidebar-menu li a:hover, .sidebar-menu li.active a {
+            background-color: var(--primary-color);
+            color: white;
+        }
+        .sidebar-menu li a i {
+            margin-right: 15px;
+            width: 20px;
+            text-align: center;
+        }
+        .user-profile {
+            margin-top: auto;
+            border-top: 1px solid var(--border-color);
+            padding-top: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .user-profile div {
+            font-weight: 500;
+        }
+        .user-profile a {
+            color: var(--subtext-color);
+            text-decoration: none;
+        }
+
+        /* --- メインコンテンツ (PC) --- */
+        .main-content {
+            flex-grow: 1;
+            padding: 30px;
+            height: 100vh;
+            overflow-y: auto;
+            box-sizing: border-box;
+            margin-left: 260px; /* Sidebar width */
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 28px;
+        }
+        
+        /* Hamburger Menu Icon - Hidden on Desktop */
+        .menu-toggle {
+            display: none;
+            font-size: 24px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: var(--text-color);
+        }
+
+        .clock-in-out-btn {
+            padding: 12px 25px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .clock-in {
+            background-color: var(--primary-color);
+            color: white;
+        }
+        .clock-in:hover {
+             box-shadow: 0 4px 15px rgba(74, 144, 226, 0.4);
+        }
+        
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 25px;
+        }
+        .card {
+            background-color: var(--card-background-color);
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: var(--shadow);
+        }
+        .card-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .card-header i {
+            font-size: 20px;
+            color: var(--primary-color);
+            margin-right: 15px;
+        }
+        .card-header h3 {
+            margin: 0;
+            font-size: 18px;
+            font-weight: 700;
+        }
+        .card-content p {
+            margin: 8px 0;
+            color: var(--subtext-color);
+        }
+        .card-content strong {
+            color: var(--text-color);
+            font-weight: 500;
+        }
+
+        .notification-list-item {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 15px 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+         .notification-list-item:last-child {
+            border-bottom: none;
+        }
+        .notification-actions button {
+            background: none;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 5px 10px;
+            margin-right: 10px; /* Changed from margin-left */
+            cursor: pointer;
+        }
+        .btn-approve { color: #28a745; border-color: #28a745; }
+        .btn-approve:hover { background-color: #28a745; color: white; }
+        .btn-reject { color: #dc3545; border-color: #dc3545; }
+        .btn-reject:hover { background-color: #dc3545; color: white; }
+
+
+        /* =================================== */
+        /* --- スマートフォン用のスタイル --- */
+        /* =================================== */
+        @media (max-width: 768px) {
+            .sidebar {
+                /* 普段は画面外に隠す */
+                transform: translateX(-100%); 
+            }
+            .sidebar.visible {
+                /* .visibleクラスが付いたら表示する */
+                transform: translateX(0);
+                box-shadow: 5px 0 15px rgba(0,0,0,0.1);
+            }
+            .main-content {
+                /* サイドバーがなくなるのでマージンを0に */
+                margin-left: 0;
+                padding: 15px;
+            }
+            .header {
+                margin-bottom: 20px;
+            }
+            .header h1 {
+                font-size: 22px;
+            }
+            /* ハンバーガーアイコンを表示 */
+            .menu-toggle {
+                display: block;
+            }
+            .card-grid {
+                /* カードを縦一列に */
+                grid-template-columns: 1fr;
+                gap: 15px;
+            }
+            .card {
+                padding: 20px;
+            }
+            /* 通知カードのボタンを横並びに */
+            .notification-list-item {
+                flex-direction: row;
+                justify-content: space-between;
+                align-items: center;
+            }
+            .notification-actions {
+                white-space: nowrap; /* ボタンが改行しないように */
+            }
+            .clock-in-out-btn {
+                padding: 10px 15px;
+                font-size: 14px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            勤怠管理システム
+        </div>
+        <nav class="sidebar-menu">
+            <h3>勤怠管理</h3>
+            <ul>
+                <li class="active"><a href="#"><i class="fas fa-tachometer-alt"></i>ダッシュボード</a></li>
+                <li><a href="#"><i class="fas fa-clock"></i>打刻</a></li>
+                <li><a href="#"><i class="fas fa-history"></i>勤怠履歴</a></li>
+            </ul>
+            <h3>シフト管理</h3>
+            <ul>
+                <li><a href="#"><i class="fas fa-calendar-plus"></i>シフト申請</a></li>
+                <li><a href="#"><i class="fas fa-calendar-check"></i>シフト一覧</a></li>
+                <li><a href="#"><i class="fas fa-users"></i>出勤者管理</a></li>
+            </ul>
+            <h3>経費管理</h3>
+            <ul>
+                <li><a href="#"><i class="fas fa-wallet"></i>交通費・経費登録</a></li>
+                <li><a href="#"><i class="fas fa-file-invoice-dollar"></i>月次一覧</a></li>
+            </ul>
+             <h3>レポート</h3>
+            <ul>
+                <li><a href="#"><i class="fas fa-chart-bar"></i>勤務・経費レポート</a></li>
+            </ul>
+        </nav>
+        <div class="user-profile">
+             <div><i class="fas fa-user-circle"></i> システム管理者</div>
+             <a href="#"><i class="fas fa-sign-out-alt"></i></a>
+        </div>
+    </aside>
+
+    <main class="main-content">
+        <header class="header">
+            <button class="menu-toggle" id="menu-toggle">
+                <i class="fas fa-bars"></i>
+            </button>
+            <h1>ダッシュボード</h1>
+            <button class="clock-in-out-btn clock-in"><i class="fas fa-sign-in-alt"></i> 出勤打刻</button>
+        </header>
+
+        <div class="card-grid">
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-briefcase"></i>
+                    <h3>本日の勤務情報</h3>
+                </div>
+                <div class="card-content">
+                    <p>ステータス: <strong>勤務前</strong></p>
+                    <p>勤務時間: <strong>10:00 - 19:00</strong></p>
+                    [cite_start]<p>勤務地: <strong>ソフトバンクヨドバシ梅田</strong> [cite: 6]</p>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-chart-pie"></i>
+                    <h3>今月の勤怠サマリー</h3>
+                </div>
+                <div class="card-content">
+                    <p>総労働時間: <strong>80.5 / 160 時間</strong></p>
+                    <p>残業時間: <strong>5.5 時間</strong></p>
+                    <p>有給取得日数: <strong>1 / 10 日</strong></p>
+                </div>
+            </div>
+            
+            <div class="card" style="grid-column: 1 / -1;">
+                <div class="card-header">
+                    <i class="fas fa-bell"></i>
+                    <h3>お知らせ・承認待ち (3件)</h3>
+                </div>
+                <div class="card-content">
+                    <div class="notification-list-item">
+                        <div><strong>田中 太郎</strong>さんから交通費精算の申請</div>
+                        <div class="notification-actions">
+                            <button class="btn-approve">承認</button>
+                            <button class="btn-reject">却下</button>
+                        </div>
+                    </div>
+                     <div class="notification-list-item">
+                        <div><strong>鈴木 花子</strong>さんからシフト変更の申請</div>
+                        <div class="notification-actions">
+                            <button class="btn-approve">承認</button>
+                            <button class="btn-reject">却下</button>
+                        </div>
+                    </div>
+                     <div class="notification-list-item">
+                        <div><strong>佐藤 次郎</strong>さんから時間外勤務の申請</div>
+                        <div class="notification-actions">
+                            <button class="btn-approve">承認</button>
+                            <button class="btn-reject">却下</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const menuToggle = document.getElementById('menu-toggle');
+        const sidebar = document.getElementById('sidebar');
+
+        menuToggle.addEventListener('click', () => {
+            sidebar.classList.toggle('visible');
+        });
+
+        // Optional: Close sidebar when clicking outside of it
+        document.addEventListener('click', (event) => {
+            if (sidebar.classList.contains('visible') && !sidebar.contains(event.target) && !menuToggle.contains(event.target)) {
+                sidebar.classList.remove('visible');
+            }
+        });
+    </script>
+
+</body>
+</html>

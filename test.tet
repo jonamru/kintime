@@ -1,0 +1,22 @@
+c895c6718e4116de2c46ec9742e34614b273e7c9.rtfd
+
+データベースエラーが発生しました
+詳細：
+Invalid
+_TURBOPACK__imported_module_$5b$project$5d2f$src$2f
+Slib$2f$prisma$2e
+Sts_$5b$app$2d$route$5d$_$28$ecmascript$29$_("prisma"
+1.expense.create() ' invocation in
+*/Users/kohei/Desktop/kintime/kintime-app/kintime-app/.next/ server/chunks/[root-of-the-server]_83cef245._.js:226:166
+
+223 console.log（"経費作成データ：， createData）：
+224 let expense;
+225 try €
+→ 226 expense = await
+_TURBOPACK imported module $5b$project$5d2f$src$2f
+Slib$2fSprisma$2eSts A5b$app$2d$route$5d$_$28$ecmascri
+pt$29$_["prisma"].expen
+se.create
+The provided value for the column is too long for the column's
+
+type. Column: description

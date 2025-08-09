@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>勤怠打刻 - 勤怠管理システム</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --primary-color: #4A90E2;
+            --secondary-color: #f39c12; /* Orange for break */
+            --danger-color: #e74c3c;   /* Red for clock out */
+            --background-color: #f4f7fc;
+            --card-background-color: #ffffff;
+            --text-color: #333;
+            --subtext-color: #777;
+            --border-color: #e0e0e0;
+        }
+
+        body {
+            font-family: 'Noto Sans JP', sans-serif;
+            margin: 0;
+            background-color: var(--background-color);
+            color: var(--text-color);
+        }
+        
+        /* --- 共通ヘッダー --- */
+        .app-header {
+            background-color: var(--card-background-color);
+            padding: 0 30px;
+            height: 65px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .app-header .logo a {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--primary-color);
+            text-decoration: none;
+        }
+         .app-header .logo a i {
+            margin-right: 10px;
+        }
+
+        .app-header .user-info a {
+             color: var(--subtext-color);
+             text-decoration: none;
+             font-weight: 500;
+        }
+         .app-header .user-info a:hover {
+            color: var(--primary-color);
+        }
+         .app-header .user-info i {
+            margin-left: 8px;
+        }
+
+        /* --- メインコンテンツエリア --- */
+        .main-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 40px 20px;
+            box-sizing: border-box;
+            min-height: calc(100vh - 65px); /* Full height minus header */
+        }
+
+        .attendance-container {
+            width: 100%;
+            max-width: 500px;
+            text-align: center;
+            background-color: var(--card-background-color);
+            padding: 40px;
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        }
+
+        .clock-display h1 {
+            font-size: 48px;
+            font-weight: 700;
+            color: var(--text-color);
+            margin: 0;
+            letter-spacing: 2px;
+        }
+
+        .clock-display p {
+            font-size: 18px;
+            color: var(--subtext-color);
+            margin: 5px 0 30px 0;
+        }
+
+        .status-display {
+            font-size: 18px;
+            font-weight: 500;
+            margin-bottom: 30px;
+            padding: 10px;
+            background-color: #eaf2fd;
+            color: var(--primary-color);
+            border-radius: 8px;
+        }
+        
+        .action-buttons .btn {
+            display: inline-block;
+            width: 100%;
+            max-width: 280px;
+            padding: 20px 0;
+            margin-bottom: 15px;
+            border: none;
+            border-radius: 12px;
+            font-size: 20px;
+            font-weight: 700;
+            color: white;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        .action-buttons .btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+        }
+
+        .btn-clock-in { background-color: var(--primary-color); }
+        .btn-break { background-color: var(--secondary-color); }
+        .btn-clock-out { background-color: var(--danger-color); }
+
+
+        .todays-log {
+            margin-top: 40px;
+            text-align: left;
+        }
+        .todays-log h3 {
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 15px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 10px;
+        }
+        .todays-log ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        .todays-log li {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 5px;
+            font-size: 16px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .todays-log li:last-child {
+            border-bottom: none;
+        }
+        .todays-log li .time {
+            font-weight: 500;
+            color: var(--text-color);
+        }
+         .todays-log li .label {
+            color: var(--subtext-color);
+        }
+
+        .history-link {
+            display: inline-block;
+            margin-top: 30px;
+            color: var(--primary-color);
+            text-decoration: none;
+            font-weight: 500;
+        }
+        .history-link:hover {
+            text-decoration: underline;
+        }
+        
+        /* スマホ用のスタイル */
+        @media (max-width: 768px) {
+            .app-header {
+                padding: 0 15px;
+            }
+            .main-container {
+                padding: 20px 15px;
+            }
+            .attendance-container {
+                padding: 30px 20px;
+            }
+             .clock-display h1 {
+                font-size: 36px;
+            }
+            .clock-display p {
+                font-size: 16px;
+            }
+        }
+
+    </style>
+</head>
+<body>
+    
+    <header class="app-header">
+        <div class="logo">
+            <a href="dashboard-responsive.html"><i class="fas fa-tasks"></i> 勤怠管理システム</a>
+        </div>
+        <div class="user-info">
+            <a href="login-new.html">システム管理者 <i class="fas fa-sign-out-alt"></i></a>
+        </div>
+    </header>
+
+    <main class="main-container">
+        <div class="attendance-container">
+            
+            <div class="clock-display">
+                <h1 id="current-time">02:59:01</h1>
+                <p id="current-date">2025年8月1日 (金)</p>
+            </div>
+
+            <div class="status-display">
+                現在のステータス: <strong>勤務中</strong>
+            </div>
+
+            <div class="action-buttons">
+                <button class="btn btn-break"><i class="fas fa-coffee"></i> 休憩開始</button>
+                <button class="btn btn-clock-out"><i class="fas fa-sign-out-alt"></i> 退勤</button>
+            </div>
+
+            <div class="todays-log">
+                <h3>本日の打刻記録</h3>
+                <ul>
+                    <li>
+                        <span class="label">出勤</span>
+                        <span class="time">09:01</span>
+                    </li>
+                    <li>
+                        <span class="label">休憩開始</span>
+                        <span class="time">12:30</span>
+                    </li>
+                    <li>
+                        <span class="label">休憩終了</span>
+                        <span class="time">13:30</span>
+                    </li>
+                    <li>
+                        <span class="label">退勤</span>
+                        <span class="time">(未打刻)</span>
+                    </li>
+                </ul>
+            </div>
+            
+            <a href="#" class="history-link">すべての履歴を見る <i class="fas fa-chevron-right"></i></a>
+
+        </div>
+    </main>
+
+    <script>
+        function updateClock() {
+            const now = new Date();
+            const timeString = now.toLocaleTimeString('ja-JP', { hour12: false });
+            const dateString = new Intl.DateTimeFormat('ja-JP-u-ca-japanese', { dateStyle: 'full' }).format(now);
+
+            const timeEl = document.getElementById('current-time');
+            const dateEl = document.getElementById('current-date');
+            
+            if(timeEl) timeEl.textContent = timeString;
+            if(dateEl) dateEl.textContent = dateString;
+        }
+        
+        updateClock();
+        setInterval(updateClock, 1000);
+    </script>
+</body>
+</html>

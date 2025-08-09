@@ -1,0 +1,226 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ユーザー
+model User {
+  id             String           @id @default(cuid())
+  email          String           @unique
+  password       String
+  name           String
+  birthDate      DateTime?
+  customRoleId   String
+  customRole     CustomRole       @relation(fields: [customRoleId], references: [id])
+  partnerId      String?
+  partner        Partner?         @relation(fields: [partnerId], references: [id])
+  managedUsers   User[]           @relation("ManagerToUser")
+  managerId      String?
+  manager        User?            @relation("ManagerToUser", fields: [managerId], references: [id])
+  attendances    Attendance[]
+  shiftRequests  ShiftRequest[]
+  shifts         Shift[]
+  expenses       Expense[]
+  commutePasses  CommutePass[]
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@index([customRoleId])
+  @@index([partnerId])
+  @@index([managerId])
+}
+
+
+// パートナー企業
+model Partner {
+  id        String   @id @default(cuid())
+  name      String
+  users     User[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// 勤怠
+model Attendance {
+  id            String           @id @default(cuid())
+  userId        String
+  user          User             @relation(fields: [userId], references: [id])
+  date          DateTime
+  type          AttendanceType
+  clockTime     DateTime
+  latitude      Float?
+  longitude     Float?
+  corrections   Correction[]
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  @@index([userId, date])
+}
+
+// 打刻種別
+enum AttendanceType {
+  CLOCK_IN    // 出勤
+  CLOCK_OUT   // 退勤
+  WAKE_UP     // 起床報告
+  DEPARTURE   // 出発報告
+}
+
+// 勤怠修正
+model Correction {
+  id           String       @id @default(cuid())
+  attendanceId String
+  attendance   Attendance   @relation(fields: [attendanceId], references: [id])
+  oldTime      DateTime
+  newTime      DateTime
+  reason       String
+  status       CorrectionStatus
+  comment      String?
+  approvedBy   String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@index([attendanceId])
+}
+
+// 修正ステータス
+enum CorrectionStatus {
+  PENDING   // 申請中
+  APPROVED  // 承認済み
+  REJECTED  // 却下
+}
+
+// シフト希望
+model ShiftRequest {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  date         DateTime
+  isAvailable  Boolean
+  note         String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([userId, date])
+  @@index([userId])
+}
+
+// シフト
+model Shift {
+  id         String     @id @default(cuid())
+  userId     String
+  user       User       @relation(fields: [userId], references: [id])
+  projectId  String
+  project    Project    @relation(fields: [projectId], references: [id])
+  date       DateTime
+  startTime  DateTime
+  endTime    DateTime
+  shiftType  ShiftType
+  location   String?    // スポットシフトの場合
+  status     ShiftStatus
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  @@index([userId, date])
+  @@index([projectId])
+}
+
+// シフトタイプ
+enum ShiftType {
+  REGULAR  // 常勤シフト
+  SPOT     // スポットシフト
+}
+
+// シフトステータス
+enum ShiftStatus {
+  DRAFT      // 下書き
+  CONFIRMED  // 確定
+  CANCELLED  // キャンセル
+}
+
+// 案件
+model Project {
+  id            String    @id @default(cuid())
+  name          String
+  client        String
+  location      String
+  description   String?
+  contractPrice Float?    // 受注単価
+  paymentPrice  Float?    // 支払単価
+  shifts        Shift[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+// 交通費・経費
+model Expense {
+  id            String        @id @default(cuid())
+  userId        String
+  user          User          @relation(fields: [userId], references: [id])
+  date          DateTime
+  type          ExpenseType
+  amount        Float
+  description   String?
+  departure     String?       // 交通費の出発地
+  arrival       String?       // 交通費の到着地
+  route         String?       // 経路
+  referenceUrl  String?       // 参照URL
+  status        ExpenseStatus
+  comment       String?
+  approvedBy    String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([userId, date])
+}
+
+// 経費種別
+enum ExpenseType {
+  TRANSPORT  // 交通費
+  LODGING    // 宿泊費
+}
+
+// 経費ステータス
+enum ExpenseStatus {
+  PENDING   // 申請中
+  APPROVED  // 承認済み
+  REJECTED  // 却下
+}
+
+// 定期券
+model CommutePass {
+  id           String    @id @default(cuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id])
+  startStation String
+  endStation   String
+  validFrom    DateTime
+  validUntil   DateTime
+  imageUrl     String?   // 定期券の写真URL
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([userId])
+}
+
+// カスタムロール
+model CustomRole {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  displayName String
+  isSystem    Boolean  @default(false) // システムデフォルトのロールかどうか
+  permissions Json     // 権限の詳細をJSON形式で保存
+  pageAccess  Json     // アクセス可能なページをJSON形式で保存
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  users       User[]
+}

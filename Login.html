@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ログイン - 勤怠管理システム</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --primary-color: #4A90E2;
+            --background-color: #f4f7fc;
+            --card-background-color: #ffffff;
+            --text-color: #333;
+            --subtext-color: #777;
+            --border-color: #e0e0e0;
+        }
+
+        body {
+            font-family: 'Noto Sans JP', sans-serif;
+            margin: 0;
+            background-color: var(--background-color);
+            color: var(--text-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+
+        .login-container {
+            display: flex;
+            width: 100%;
+            max-width: 900px;
+            min-height: 550px;
+            background-color: var(--card-background-color);
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        /* 左側のブランディングパネル */
+        .branding-panel {
+            width: 45%;
+            background-color: var(--primary-color);
+            color: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px;
+            box-sizing: border-box;
+            text-align: center;
+        }
+        .branding-panel i {
+            font-size: 60px;
+            margin-bottom: 20px;
+        }
+        .branding-panel h1 {
+            margin: 0;
+            font-size: 28px;
+            font-weight: 700;
+        }
+        .branding-panel p {
+            font-size: 16px;
+            opacity: 0.8;
+        }
+
+        /* 右側のログインフォームパネル */
+        .login-panel {
+            width: 55%;
+            padding: 50px;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        
+        .login-panel h2 {
+            font-size: 26px;
+            font-weight: 700;
+            margin-top: 0;
+            margin-bottom: 10px;
+            color: var(--text-color);
+        }
+
+        .login-panel p {
+            margin-top: 0;
+            margin-bottom: 30px;
+            color: var(--subtext-color);
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+        }
+        
+        .input-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        .input-group input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            font-size: 16px;
+            box-sizing: border-box;
+            transition: border-color 0.3s, box-shadow 0.3s;
+        }
+
+        .input-group input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.2);
+        }
+
+        .login-button {
+            width: 100%;
+            padding: 15px;
+            border: none;
+            border-radius: 8px;
+            background-color: var(--primary-color);
+            color: white;
+            font-size: 16px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: background-color 0.3s, transform 0.2s;
+            margin-top: 10px; /* Add margin to space from password field */
+        }
+
+        .login-button:hover {
+            background-color: #357ABD;
+        }
+         .login-button:active {
+            transform: scale(0.98);
+        }
+
+
+        /* スマホ用のスタイル */
+        @media (max-width: 768px) {
+            body {
+                align-items: flex-start;
+                background-color: var(--card-background-color);
+            }
+            .login-container {
+                flex-direction: column;
+                min-height: 100vh;
+                border-radius: 0;
+                box-shadow: none;
+            }
+            .branding-panel, .login-panel {
+                width: 100%;
+                box-sizing: border-box;
+            }
+            .branding-panel {
+                min-height: 200px;
+                padding: 20px;
+            }
+            .login-panel {
+                padding: 30px 20px;
+                flex-grow: 1;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="login-container">
+        <div class="branding-panel">
+            <i class="fas fa-tasks"></i>
+            <h1>勤怠管理システム</h1>
+            <p>日々の業務を、よりスマートに。</p>
+        </div>
+        <div class="login-panel">
+            <h2>ログイン</h2>
+            <p>メールアドレスとパスワードを入力してください。</p>
+            <form>
+                <div class="input-group">
+                    <label for="email">メールアドレス</label>
+                    <input type="email" id="email" name="email" required>
+                </div>
+                <div class="input-group">
+                    <label for="password">パスワード</label>
+                    <input type="password" id="password" name="password" required>
+                </div>
+                <button type="submit" class="login-button">ログイン</button>
+            </form>
+        </div>
+    </div>
+
+</body>
+</html>
