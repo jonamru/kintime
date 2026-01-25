@@ -4,7 +4,7 @@ import { getCurrentUser } from "@/lib/auth";
 
 export async function GET(request: Request) {
   try {
-    const currentUser = await getCurrentUser(request as any);
+    const currentUser = await getCurrentUser(request);
     
     if (!currentUser) {
       return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
@@ -47,7 +47,7 @@ export async function GET(request: Request) {
       shiftDate: shift.date,
       attendanceCount: attendance ? 1 : 0
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("打刻チェックエラー:", error);
     return NextResponse.json(
       { error: "チェックに失敗しました" },

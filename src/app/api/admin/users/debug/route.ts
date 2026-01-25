@@ -4,7 +4,7 @@ import { getCurrentUser, isAdmin } from "@/lib/auth";
 
 export async function GET(request: Request) {
   try {
-    const currentUser = await getCurrentUser(request as any);
+    const currentUser = await getCurrentUser(request);
     
     if (!currentUser || !(await isAdmin(currentUser.id))) {
       return NextResponse.json({ error: "管理者権限が必要です" }, { status: 403 });
@@ -51,7 +51,7 @@ export async function GET(request: Request) {
         role: currentUser.customRole?.name || 'UNKNOWN',
       },
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("デバッグエラー:", error);
     return NextResponse.json(
       { error: "デバッグ情報の取得に失敗しました" },

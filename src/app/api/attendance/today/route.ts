@@ -2,11 +2,17 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { getJapanTodayString, getJapanDayRange } from "@/lib/dateUtils";
+import type { Attendance, ApiResponse } from "@/types/common";
 
-export async function GET(request: Request) {
+interface TodayAttendanceResponse extends ApiResponse {
+  attendance: Partial<Attendance>[];
+  date: string;
+}
+
+export async function GET(request: Request): Promise<NextResponse<TodayAttendanceResponse | ApiResponse>> {
   try {
-    const currentUser = await getCurrentUser(request as any);
-    
+    const currentUser = await getCurrentUser(request);
+
     if (!currentUser) {
       return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
     }
@@ -38,12 +44,12 @@ export async function GET(request: Request) {
 
     console.log(`今日の勤怠記録数: ${todayAttendance.length}`);
     console.log("勤怠記録:", todayAttendance);
-    
+
     return NextResponse.json({
       attendance: todayAttendance,
       date: todayString,
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("今日の勤怠取得エラー:", error);
     return NextResponse.json(
       { error: "今日の勤怠情報の取得に失敗しました" },

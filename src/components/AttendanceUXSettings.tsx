@@ -16,9 +16,9 @@ interface AttendanceUXSettings {
   enableSoundFeedback: boolean;
 }
 
-export default function AttendanceUXSettings({ 
-  userId, 
-  onSettingsChange 
+export default function AttendanceUXSettings({
+  userId,
+  onSettingsChange
 }: AttendanceUXSettingsProps) {
   const [settings, setSettings] = useState<AttendanceUXSettings>({
     showConfirmDialog: false,
@@ -32,6 +32,7 @@ export default function AttendanceUXSettings({
 
   useEffect(() => {
     loadSettings();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
   const loadSettings = async () => {
@@ -68,7 +69,7 @@ export default function AttendanceUXSettings({
       } else {
         showAlert("設定の保存に失敗しました");
       }
-    } catch (error) {
+    } catch {
       showAlert("エラーが発生しました");
     } finally {
       setLoading(false);
@@ -111,7 +112,7 @@ export default function AttendanceUXSettings({
         {/* 確認ダイアログ設定 */}
         <div className="border-b border-gray-200 pb-6">
           <h4 className="font-semibold text-gray-800 mb-3">操作確認</h4>
-          
+
           <div className="flex items-start space-x-3">
             <input
               type="checkbox"
@@ -134,7 +135,7 @@ export default function AttendanceUXSettings({
         {/* Undo機能設定 */}
         <div className="border-b border-gray-200 pb-6">
           <h4 className="font-semibold text-gray-800 mb-3">操作の取り消し</h4>
-          
+
           <div className="space-y-4">
             <div className="flex items-start space-x-3">
               <input
@@ -181,7 +182,7 @@ export default function AttendanceUXSettings({
         {/* 視覚的フィードバック設定 */}
         <div className="border-b border-gray-200 pb-6">
           <h4 className="font-semibold text-gray-800 mb-3">視覚的フィードバック</h4>
-          
+
           <div className="flex items-start space-x-3">
             <input
               type="checkbox"
@@ -204,7 +205,7 @@ export default function AttendanceUXSettings({
         {/* 音声フィードバック設定 */}
         <div className="pb-6">
           <h4 className="font-semibold text-gray-800 mb-3">音声フィードバック</h4>
-          
+
           <div className="flex items-start space-x-3">
             <input
               type="checkbox"
@@ -244,7 +245,7 @@ export default function AttendanceUXSettings({
         >
           デフォルトに戻す
         </button>
-        
+
         <div className="space-x-2">
           {isDirty && (
             <span className="text-xs text-orange-600 mr-2">
@@ -254,11 +255,10 @@ export default function AttendanceUXSettings({
           <button
             onClick={saveSettings}
             disabled={loading || !isDirty}
-            className={`px-6 py-2 rounded-md text-sm font-medium transition-colors ${
-              loading || !isDirty
-                ? "bg-gray-400 text-gray-600 cursor-not-allowed"
-                : "bg-blue-600 text-white hover:bg-blue-700"
-            }`}
+            className={`px-6 py-2 rounded-md text-sm font-medium transition-colors ${loading || !isDirty
+              ? "bg-gray-400 text-gray-600 cursor-not-allowed"
+              : "bg-blue-600 text-white hover:bg-blue-700"
+              }`}
           >
             {loading ? "保存中..." : "設定を保存"}
           </button>

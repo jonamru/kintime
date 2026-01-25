@@ -2,11 +2,15 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { hasPermission, hasPermissionForUser, getAccessibleUserIds } from "@/lib/permissions";
+import { createRequestCache } from "@/lib/requestCache";
+import { Prisma } from "@prisma/client";
 
 export async function GET(request: Request) {
   try {
     console.log("=== 月次経費取得API開始 ===");
-    
+
+    const requestCache = createRequestCache();
+
     const { searchParams } = new URL(request.url);
     const year = parseInt(searchParams.get('year') || '');
     const month = parseInt(searchParams.get('month') || '');
@@ -25,9 +29,9 @@ export async function GET(request: Request) {
     }
 
     // 経費閲覧権限をチェック
-    const canViewAll = await hasPermission(currentUser.id, "expenseManagement", "viewAll");
-    const canViewCompany = await hasPermission(currentUser.id, "expenseManagement", "viewCompany");
-    const accessibleUserIds = await getAccessibleUserIds(currentUser.id, "expenseManagement", "viewAll");
+    const canViewAll = await hasPermission(currentUser.id, "expenseManagement", "viewAll", requestCache);
+    const canViewCompany = await hasPermission(currentUser.id, "expenseManagement", "viewCompany", requestCache);
+    const accessibleUserIds = await getAccessibleUserIds(currentUser.id, "expenseManagement", "viewAll", requestCache);
     console.log("全経費閲覧権限:", canViewAll, "会社内閲覧権限:", canViewCompany, "担当ユーザー数:", accessibleUserIds.length);
 
     // 権限チェック
@@ -35,8 +39,8 @@ export async function GET(request: Request) {
     if (userId) {
       // 特定ユーザーが指定された場合
       if (!canViewAll) {
-        const canViewUser = await hasPermissionForUser(currentUser.id, userId, "expenseManagement", "viewAll");
-        
+        const canViewUser = await hasPermissionForUser(currentUser.id, userId, "expenseManagement", "viewAll", requestCache);
+
         // 会社内権限がある場合は同じ会社のユーザーかチェック
         let canViewCompanyUser = false;
         if (canViewCompany) {
@@ -46,7 +50,7 @@ export async function GET(request: Request) {
           });
           canViewCompanyUser = targetUser?.partnerId === currentUser.partnerId;
         }
-        
+
         if (!canViewUser && !canViewCompanyUser && userId !== currentUser.id) {
           return NextResponse.json({ error: "このユーザーの経費を閲覧する権限がありません" }, { status: 403 });
         }
@@ -69,7 +73,7 @@ export async function GET(request: Request) {
     console.log("検索期間:", { startDate, endDate, targetUserId });
 
     // 基本のクエリ条件
-    const whereCondition: any = {
+    const whereCondition: Prisma.ExpenseWhereInput = {
       date: {
         gte: startDate,
         lte: endDate,
@@ -135,7 +139,7 @@ export async function GET(request: Request) {
       month,
       userId: targetUserId,
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("月次経費取得エラー:", error);
     console.error("エラー詳細:", {
       name: error instanceof Error ? error.name : 'Unknown',

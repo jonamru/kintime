@@ -5,7 +5,13 @@ import { showAlert } from '@/lib/notification';
 
 export default function FixPermissionsPage() {
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<any>(null);
+  interface ResultData {
+    error?: string;
+    message?: string;
+    rolesUpdated?: number;
+    [key: string]: unknown;
+  }
+  const [result, setResult] = useState<ResultData | null>(null);
 
   const handleFixPermissions = async () => {
     setLoading(true);

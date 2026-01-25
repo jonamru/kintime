@@ -10,15 +10,51 @@ export function hasUserPermission(
   try {
     // ユーザーが存在しない場合はfalse
     if (!user) return false;
-    
+
     // カスタムロールがある場合はその権限を使用
     if (user.customRole && user.customRole.permissions) {
-      const permissions = user.customRole.permissions as Permissions;
+      const permissions = user.customRole.permissions as unknown as Permissions;
       const categoryPermissions = permissions[category];
       if (!categoryPermissions) return false;
-      return categoryPermissions[permission as keyof typeof categoryPermissions] === true;
+
+      // Check if using new scope/level format
+      if ('scope' in categoryPermissions && 'level' in categoryPermissions) {
+        const cp = categoryPermissions as { scope: string; level: string };
+        const scopeHierarchy = ['self', 'assigned', 'company', 'all'];
+        const levelHierarchy = ['none', 'view', 'edit', 'admin'];
+
+        // Determine required level based on permission
+        const requiredLevel =
+          permission === 'viewAll' || permission === 'viewCompany' || permission === 'viewAssigned' ? 'view' :
+            permission === 'edit' || permission === 'editOthers' || permission === 'editAssigned' || permission === 'create' ? 'edit' :
+              (permission === 'lock' && category === 'expenseManagement') ? 'edit' :
+                (permission === 'lockUnlock' && category === 'shiftManagement') ? 'edit' :
+                  permission === 'approve' || permission === 'delete' || permission === 'lock' || permission === 'lockUnlock' || permission === 'ignoreDeadline' ? 'admin' : 'view';
+
+        // Check if level is sufficient
+        if (levelHierarchy.indexOf(cp.level) < levelHierarchy.indexOf(requiredLevel)) {
+          return false;
+        }
+
+        // Check scope based on permission requested
+        if (permission === 'viewAll') {
+          return cp.scope === 'all';
+        }
+        if (permission === 'viewCompany') {
+          return cp.scope === 'all' || cp.scope === 'company';
+        }
+        if (permission === 'viewAssigned') {
+          return scopeHierarchy.indexOf(cp.scope) >= scopeHierarchy.indexOf('assigned');
+        }
+
+        // For other permissions (edit, admin, etc.), return true if level is sufficient
+        return true;
+      }
+
+      // Old format: check boolean value
+      return (categoryPermissions as Record<string, boolean>)[permission] === true;
     }
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('hasUserPermission error:', error);
     return false;
   }
@@ -31,13 +67,13 @@ export function hasUserPageAccess(user: AuthUser, page: keyof PageAccess): boole
   try {
     // ユーザーが存在しない場合はfalse
     if (!user) return false;
-    
+
     // カスタムロールがある場合はその権限を使用
     if (user.customRole && user.customRole.pageAccess) {
-      const pageAccess = user.customRole.pageAccess as PageAccess;
+      const pageAccess = user.customRole.pageAccess as unknown as PageAccess;
       return pageAccess[page] === true;
     }
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('hasUserPageAccess error:', error);
     return false;
   }
@@ -70,7 +106,7 @@ export function hasUserPermissionForUser(
     }
 
     return false;
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('hasUserPermissionForUser error:', error);
     return false;
   }
@@ -81,16 +117,16 @@ export function isUserAdmin(user: AuthUser): boolean {
   try {
     // ユーザーが存在しない場合はfalse
     if (!user) return false;
-    
+
     // カスタムロールがある場合は、カスタムロールの権限のみを使用
     if (user.customRole) {
-      return hasUserPermission(user, 'userManagement', 'viewAll') || 
-             hasUserPermission(user, 'systemSettings', 'manageCompany');
+      return hasUserPermission(user, 'userManagement', 'viewAll') ||
+        hasUserPermission(user, 'systemSettings', 'manageCompany');
     }
-    
+
     // カスタムロールがない場合は管理者権限なし
     return false;
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('isUserAdmin error:', error);
     return false;
   }
@@ -101,32 +137,32 @@ export function canBeManager(user: AuthUser): boolean {
   try {
     // ユーザーが存在しない場合はfalse
     if (!user) return false;
-    
+
     // カスタムロールがある場合
     if (user.customRole) {
       // 全体権限がある場合
-      if (hasUserPermission(user, 'userManagement', 'viewAll') || 
-          hasUserPermission(user, 'userManagement', 'editOthers') ||
-          hasUserPermission(user, 'systemSettings', 'manageCompany')) {
+      if (hasUserPermission(user, 'userManagement', 'viewAll') ||
+        hasUserPermission(user, 'userManagement', 'editOthers') ||
+        hasUserPermission(user, 'systemSettings', 'manageCompany')) {
         return true;
       }
-      
+
       // 会社内権限がある場合
       if (hasUserPermission(user, 'shiftManagement', 'viewCompany') ||
-          hasUserPermission(user, 'attendanceManagement', 'viewCompany') ||
-          hasUserPermission(user, 'expenseManagement', 'viewCompany')) {
+        hasUserPermission(user, 'attendanceManagement', 'viewCompany') ||
+        hasUserPermission(user, 'expenseManagement', 'viewCompany')) {
         return true;
       }
-      
+
       // 担当者権限がある場合
-      if (hasUserPermission(user, 'userManagement', 'viewAssigned') || 
-          hasUserPermission(user, 'userManagement', 'editAssigned')) {
+      if (hasUserPermission(user, 'userManagement', 'viewAssigned') ||
+        hasUserPermission(user, 'userManagement', 'editAssigned')) {
         return true;
       }
     }
-    
+
     return false;
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('canBeManager error:', error);
     return false;
   }

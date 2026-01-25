@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
     const timestamp = Date.now();
     const originalName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_'); // 特殊文字を_に置換
     const fileName = `${timestamp}_${originalName}`;
-    const filePath = path.join(process.cwd(), "public/uploads", fileName);
+    const filePath = path.join(process.cwd(), "private-uploads", fileName);
 
     // ファイルを保存
     await writeFile(filePath, buffer);
@@ -38,9 +38,9 @@ export async function POST(request: NextRequest) {
     // 公開URLを返す
     const fileUrl = `/uploads/${fileName}`;
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       message: "ファイルのアップロードが完了しました",
-      url: fileUrl 
+      url: fileUrl
     });
   } catch (error) {
     console.error("ファイルアップロードエラー:", error);

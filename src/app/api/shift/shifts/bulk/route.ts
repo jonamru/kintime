@@ -95,7 +95,7 @@ async function canRegisterShift(userId: string, shiftDate: Date): Promise<{ canR
       canRegister: false, 
       reason: `${targetYear}年${targetMonth + 1}月のシフト登録期限（${registrationDeadline}日）を過ぎています` 
     };
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("登録可能性チェックエラー:", error);
     return { canRegister: false, reason: "システムエラーが発生しました" };
   }
@@ -106,7 +106,7 @@ export async function POST(request: Request) {
     const { shifts } = await request.json();
 
     // 認証
-    const currentUser = await getCurrentUser(request as any);
+    const currentUser = await getCurrentUser(request);
     
     if (!currentUser) {
       return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
@@ -175,7 +175,7 @@ export async function POST(request: Request) {
     const shiftsToCreate = [];
 
     // 強制登録権限がない場合は全日付の登録可能性を一括チェック
-    let registrationCheckResults: Map<string, any> = new Map();
+    const registrationCheckResults: Map<string, { canRegister: boolean; reason?: string }> = new Map();
     if (!hasForceRegisterPermission) {
       // 全日付について登録可能性をチェック
       for (const shiftData of validShifts) {
@@ -195,7 +195,7 @@ export async function POST(request: Request) {
       if (!hasForceRegisterPermission) {
         const canRegister = registrationCheckResults.get(shiftData.date);
         if (!canRegister?.canRegister) {
-          registrationErrors.push(`${localDate.toLocaleDateString('ja-JP')}: ${canRegister.reason}`);
+          registrationErrors.push(`${localDate.toLocaleDateString('ja-JP')}: ${canRegister?.reason || '登録できません'}`);
           continue;
         }
       }
@@ -209,10 +209,10 @@ export async function POST(request: Request) {
         startTime: startDateTime,
         endTime: endDateTime,
         breakTime: shiftData.breakTime ?? 60,
-        shiftType: shiftData.shiftType as any,
+        shiftType: shiftData.shiftType as 'REGULAR' | 'SPOT',
         location: shiftData.location || "",
         note: shiftData.note || null,
-        status: "APPROVED" as any, // 登録制なので即座に確定
+        status: "APPROVED" as 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED', // 登録制なので即座に確定
       });
     }
 
@@ -239,7 +239,7 @@ export async function POST(request: Request) {
       skipped: shifts.length - createdShifts.length,
       errors: registrationErrors.length > 0 ? registrationErrors : undefined,
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("一括シフト作成エラー:", error);
     console.error("エラー詳細:", {
       name: error instanceof Error ? error.name : 'Unknown',

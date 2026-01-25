@@ -25,7 +25,7 @@ export async function POST(request: Request) {
 
     for (const role of roles) {
       let needsUpdate = false;
-      let pageAccess = role.pageAccess as any || {};
+      const pageAccess = (role.pageAccess as Record<string, boolean>) || {};
       
       // bulkEditフィールドが存在しない場合のみ追加
       if (!('bulkEdit' in pageAccess)) {
@@ -38,7 +38,7 @@ export async function POST(request: Request) {
         await prisma.customRole.update({
           where: { id: role.id },
           data: { 
-            pageAccess: pageAccess as any
+            pageAccess: pageAccess
           }
         });
         updatedCount++;
@@ -51,7 +51,7 @@ export async function POST(request: Request) {
       updatedRoles: updatedCount
     });
 
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("権限フィールド追加エラー:", error);
     return NextResponse.json(
       { error: "権限フィールドの追加に失敗しました", details: (error as Error).message },

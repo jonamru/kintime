@@ -82,11 +82,11 @@ export async function GET() {
         });
       } else {
         // 新規ユーザーを作成
+        const { role, ...userDataWithoutRole } = userData;
         await prisma.user.create({
           data: {
-            ...userData,
-            role: userData.role as any,
-            partnerId: userData.role.includes('PARTNER') ? partner.id : null,
+            ...userDataWithoutRole,
+            partnerId: role.includes('PARTNER') ? partner.id : null,
           },
         });
       }
@@ -103,7 +103,7 @@ export async function GET() {
         departureEnabled: u.departureEnabled
       })),
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("設定更新エラー:", error);
     return NextResponse.json(
       { 

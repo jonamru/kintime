@@ -32,7 +32,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           router.push("/login");
         }
       }
-    } catch (error) {
+    } catch {
       setUser(null);
       if (pathname !== "/login") {
         router.push("/login");
@@ -58,6 +58,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     checkAuth();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
 
   const value = {

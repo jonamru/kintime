@@ -1,8 +1,34 @@
+"use client";
+
+import { useState, useEffect } from 'react';
+
+interface SystemSettings {
+  headerCopyright?: string;
+}
+
 interface TimeBaseHeaderProps {
   rightAction?: React.ReactNode;
 }
 
 export default function TimeBaseHeader({ rightAction }: TimeBaseHeaderProps) {
+  const [copyright, setCopyright] = useState<string>('');
+
+  useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const response = await fetch('/api/admin/system-settings');
+        if (response.ok) {
+          const data: SystemSettings = await response.json();
+          setCopyright(data.headerCopyright || '');
+        }
+      } catch (error) {
+        console.error('システム設定の取得に失敗:', error);
+      }
+    };
+
+    fetchSettings();
+  }, []);
+
   return (
     <header className="bg-white px-4 md:px-8 h-16 flex justify-between items-center border-b border-gray-200">
       <div className="flex items-center">
@@ -14,6 +40,11 @@ export default function TimeBaseHeader({ rightAction }: TimeBaseHeaderProps) {
         <a href="/dashboard" className="text-xl font-bold text-[#4A90E2] no-underline">
           TimeBase
         </a>
+        {copyright && (
+          <span className="hidden md:inline-block ml-4 text-xs text-gray-400 border-l border-gray-200 pl-4">
+            {copyright}
+          </span>
+        )}
       </div>
       <div>
         {rightAction || (

@@ -7,7 +7,7 @@ export async function POST(request: Request) {
   try {
     const { attendanceId, newTime, reason, comment } = await request.json();
 
-    const currentUser = await getCurrentUser(request as any);
+    const currentUser = await getCurrentUser(request);
     
     if (!currentUser) {
       return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
@@ -61,7 +61,7 @@ export async function POST(request: Request) {
       message: "打刻時刻を修正しました",
       correction,
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("打刻修正エラー:", error);
     return NextResponse.json(
       { error: "打刻修正に失敗しました" },

@@ -1,0 +1,20 @@
+# 依存関係
+node_modules/
+
+# ビルド出力
+.next/
+out/
+dist/
+
+# 生成ファイル
+src/generated/
+
+# 設定ファイル
+*.config.js
+*.config.ts
+
+# その他
+public/
+.git/
+.github/
+*.md

@@ -4,7 +4,7 @@ import { getCurrentUser } from "@/lib/auth";
 
 export async function DELETE(request: Request) {
   try {
-    const user = await getCurrentUser(request as any);
+    const user = await getCurrentUser(request);
     
     if (!user) {
       return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
@@ -30,7 +30,7 @@ export async function DELETE(request: Request) {
       message: `${deleted.count}件の打刻データを削除しました`,
       deleted: deleted.count,
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("打刻削除エラー:", error);
     return NextResponse.json(
       { error: "打刻データの削除に失敗しました" },

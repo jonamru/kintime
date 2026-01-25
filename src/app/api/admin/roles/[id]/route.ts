@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions";
+import type { User, Attendance, Shift, Expense, CustomRole, Partner, ApiResponse, BulkEditPermissions } from "@/types/common";
 
 export async function PUT(
   request: Request,
@@ -9,7 +10,7 @@ export async function PUT(
 ) {
   try {
     const params = await context.params;
-    const currentUser = await getCurrentUser(request as any);
+    const currentUser = await getCurrentUser(request);
     
     if (!currentUser) {
       return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
@@ -46,7 +47,7 @@ export async function PUT(
     });
     
     return NextResponse.json(role);
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("ロール更新エラー:", error);
     return NextResponse.json(
       { error: "ロールの更新に失敗しました" },
@@ -61,7 +62,7 @@ export async function DELETE(
 ) {
   try {
     const params = await context.params;
-    const currentUser = await getCurrentUser(request as any);
+    const currentUser = await getCurrentUser(request);
     
     if (!currentUser) {
       return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
@@ -111,7 +112,7 @@ export async function DELETE(
     });
     
     return NextResponse.json({ success: true });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("ロール削除エラー:", error);
     return NextResponse.json(
       { error: "ロールの削除に失敗しました" },

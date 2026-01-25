@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import type { User, Attendance, Shift, Expense, CustomRole, Partner, ApiResponse, BulkEditPermissions } from "@/types/common";
 
 interface ParseResult {
   date?: string;
@@ -36,7 +37,7 @@ export async function POST(request: Request) {
 
     // Yahoo!乗換案内の新しい形式に対応
     // パターン1: "寝屋川公園 ⇒ 松井山手" 形式（スペースを含む施設名に対応）
-    let stationMatch = text.match(/([^⇒\n]+?)\s*⇒\s*([^⇒\n]+)/);
+    const stationMatch = text.match(/([^⇒\n]+?)\s*⇒\s*([^⇒\n]+)/);
     
     // パターン2: "■駅名" 形式で出発地・到着地を抽出
     if (!stationMatch) {
@@ -117,7 +118,7 @@ export async function POST(request: Request) {
     
     // 単一路線の場合のフォールバック
     if (!result.route) {
-      let routeMatch = text.match(/(ＪＲ[^\s\n行]+|JR[^\s\n行]+|東京メトロ[^\s\n行]+|OsakaMetro[^\s\n行]+|京急[^\s\n行]+|小田急[^\s\n行]+|東急[^\s\n行]+|西武[^\s\n行]+|京王[^\s\n行]+|都営[^\s\n行]+|阪急[^\s\n行]+|阪神[^\s\n行]+|近鉄[^\s\n行]+|南海[^\s\n行]+|京阪[^\s\n行]+|北大阪急行電鉄[^\s\n行]*|泉北高速鉄道[^\s\n行]+|大阪モノレール[^\s\n行]+)/);
+      const routeMatch = text.match(/(ＪＲ[^\s\n行]+|JR[^\s\n行]+|東京メトロ[^\s\n行]+|OsakaMetro[^\s\n行]+|京急[^\s\n行]+|小田急[^\s\n行]+|東急[^\s\n行]+|西武[^\s\n行]+|京王[^\s\n行]+|都営[^\s\n行]+|阪急[^\s\n行]+|阪神[^\s\n行]+|近鉄[^\s\n行]+|南海[^\s\n行]+|京阪[^\s\n行]+|北大阪急行電鉄[^\s\n行]*|泉北高速鉄道[^\s\n行]+|大阪モノレール[^\s\n行]+)/);
       
       if (routeMatch) {
         // "同志社前行" などの行き先を除去
@@ -169,7 +170,7 @@ export async function POST(request: Request) {
     console.log("解析結果:", result);
     
     return NextResponse.json(result);
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("交通費解析エラー:", error);
     return NextResponse.json(
       { error: "交通費の解析に失敗しました" },

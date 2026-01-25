@@ -1,7 +1,15 @@
-// グローバルな通知関数
-let notificationInstance: any = null;
+interface NotificationInstance {
+  showNotification: (type: 'success' | 'error' | 'warning' | 'info', message: string) => void;
+  showConfirm: (options: {
+    message: string;
+    onConfirm: () => void;
+    onCancel: () => void;
+  }) => void;
+}
 
-export const setNotificationInstance = (instance: any) => {
+let notificationInstance: NotificationInstance | null = null;
+
+export const setNotificationInstance = (instance: NotificationInstance) => {
   notificationInstance = instance;
 };
 
@@ -21,7 +29,7 @@ export const showAlert = (message: string) => {
   }
 };
 
-export const showNotification = (message: string, type: 'success' | 'error' | 'warning' = 'success') => {
+export const showNotification = (message: string, type: 'success' | 'error' | 'warning' | 'info' = 'success') => {
   if (notificationInstance) {
     notificationInstance.showNotification(type, message);
   } else {

@@ -4,6 +4,17 @@ import { getCurrentUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions";
 import { formatJapanDate, formatJapanDateTime } from "@/lib/dateUtils";
 import { createRequestCache } from "@/lib/requestCache";
+import type { User, Attendance, Shift, Expense, CustomRole, Partner, ApiResponse, BulkEditPermissions } from "@/types/common";
+import { AttendanceType, ExpenseType } from "@prisma/client";
+
+// 型ガード関数
+const isAttendanceType = (value: unknown): value is AttendanceType => {
+  return typeof value === 'string' && Object.values(AttendanceType).includes(value as AttendanceType);
+};
+
+const isExpenseType = (value: unknown): value is ExpenseType => {
+  return typeof value === 'string' && Object.values(ExpenseType).includes(value as ExpenseType);
+};
 
 export async function POST(request: Request) {
   try {
@@ -31,7 +42,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "リクエストパラメータが不正です" }, { status: 400 });
     }
 
-    let results = [];
+    let results: { success: number; failed: number; errors: string[] } | undefined;
 
     // 事前権限チェックオブジェクト
     const permissions = {
@@ -63,7 +74,7 @@ export async function POST(request: Request) {
       results
     });
 
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("一括編集エラー:", error);
     return NextResponse.json(
       { error: "一括編集に失敗しました" },
@@ -72,8 +83,8 @@ export async function POST(request: Request) {
   }
 }
 
-async function handleBulkDelete(type: string, recordIds: string[], userId: string, permissions: any) {
-  const results = { success: 0, failed: 0, errors: [] };
+async function handleBulkDelete(type: string, recordIds: string[], userId: string, permissions: BulkEditPermissions) {
+  const results = { success: 0, failed: 0, errors: [] as string[] };
 
   // 事前権限チェック（ループ外）
   let hasPermissionForType = false;
@@ -122,13 +133,13 @@ async function handleBulkDelete(type: string, recordIds: string[], userId: strin
               break;
           }
           results.success++;
-        } catch (error) {
+        } catch (error: unknown) {
           results.failed++;
           results.errors.push(`削除失敗 ${recordId}: ${(error as Error).message}`);
         }
       }
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('一括削除トランザクションエラー:', error);
     results.failed += recordIds.length - results.success;
     results.errors.push(`トランザクションエラー: ${(error as Error).message}`);
@@ -137,8 +148,8 @@ async function handleBulkDelete(type: string, recordIds: string[], userId: strin
   return results;
 }
 
-async function handleBulkUpdate(type: string, records: any[], userId: string, permissions: any) {
-  const results = { success: 0, failed: 0, errors: [] };
+async function handleBulkUpdate(type: string, records: unknown[], userId: string, permissions: BulkEditPermissions) {
+  const results = { success: 0, failed: 0, errors: [] as string[] };
 
   // 事前権限チェック（ループ外）
   let hasPermissionForType = false;
@@ -166,16 +177,26 @@ async function handleBulkUpdate(type: string, records: any[], userId: string, pe
 
   // 一括更新処理（トランザクション使用）
   try {
+    interface BulkEditRecord {
+      id: string;
+      [key: string]: unknown;
+    }
+
     await prisma.$transaction(async (tx) => {
-      for (const record of records) {
+      for (const record of records as BulkEditRecord[]) {
         try {
           switch (type) {
             case 'attendance':
+              // 型ガードでAttendanceTypeを検証
+              if (record.type && !isAttendanceType(record.type)) {
+                throw new Error(`無効な出勤タイプ: ${record.type}`);
+              }
+              
               await tx.attendance.update({
                 where: { id: record.id },
                 data: {
-                  clockTime: record.clockTime ? new Date(record.clockTime) : undefined,
-                  type: record.type,
+                  clockTime: record.clockTime ? new Date(record.clockTime as string) : undefined,
+                  type: record.type ? record.type : undefined,
                   // 必要に応じて他のフィールドも追加
                 }
               });
@@ -185,36 +206,43 @@ async function handleBulkUpdate(type: string, records: any[], userId: string, pe
               await tx.shift.update({
                 where: { id: record.id },
                 data: {
-                  startTime: record.startTime ? new Date(record.startTime) : undefined,
-                  endTime: record.endTime ? new Date(record.endTime) : undefined,
-                  location: record.location,
-                  breakTime: record.breakTime,
-                  note: record.note,
+                  startTime: record.startTime ? new Date(record.startTime as string) : undefined,
+                  endTime: record.endTime ? new Date(record.endTime as string) : undefined,
+                  location: record.location as string,
+                  breakTime: record.breakTime as number,
+                  note: record.note as string,
                   // 必要に応じて他のフィールドも追加
                 }
               });
               break;
 
             case 'expense':
+              // 型ガードでExpenseTypeを検証
+              if (record.type && !isExpenseType(record.type)) {
+                throw new Error(`無効な経費タイプ: ${record.type}`);
+              }
+              
               await tx.expense.update({
                 where: { id: record.id },
                 data: {
-                  amount: record.amount,
-                  category: record.category,
-                  description: record.description,
+                  amount: record.amount ? Number(record.amount) : undefined,
+                  type: record.type ? record.type : undefined,
+                  description: record.description as string | undefined,
+                  departure: record.departure as string | undefined,
+                  arrival: record.arrival as string | undefined,
                   // 必要に応じて他のフィールドも追加
                 }
               });
               break;
           }
           results.success++;
-        } catch (error) {
+        } catch (error: unknown) {
           results.failed++;
           results.errors.push(`更新失敗 ${record.id}: ${(error as Error).message}`);
         }
       }
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('一括更新トランザクションエラー:', error);
     results.failed += records.length - results.success;
     results.errors.push(`トランザクションエラー: ${(error as Error).message}`);
@@ -223,8 +251,8 @@ async function handleBulkUpdate(type: string, records: any[], userId: string, pe
   return results;
 }
 
-async function handleBulkApprove(type: string, recordIds: string[], userId: string, permissions: any) {
-  const results = { success: 0, failed: 0, errors: [] };
+async function handleBulkApprove(type: string, recordIds: string[], userId: string, permissions: BulkEditPermissions) {
+  const results = { success: 0, failed: 0, errors: [] as string[] };
 
   // 事前権限チェック（ループ外）
   let hasPermissionForType = false;
@@ -268,13 +296,13 @@ async function handleBulkApprove(type: string, recordIds: string[], userId: stri
               break;
           }
           results.success++;
-        } catch (error) {
+        } catch (error: unknown) {
           results.failed++;
           results.errors.push(`承認失敗 ${recordId}: ${(error as Error).message}`);
         }
       }
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('一括承認トランザクションエラー:', error);
     results.failed += recordIds.length - results.success;
     results.errors.push(`トランザクションエラー: ${(error as Error).message}`);
@@ -328,11 +356,71 @@ export async function GET(request: Request) {
     const startDate = new Date(parseInt(year), parseInt(month) - 1, 1);
     const endDate = new Date(parseInt(year), parseInt(month), 0, 23, 59, 59);
 
-    let data = [];
+    // フォーマット後のレコードの型を定義
+    interface FormattedAttendanceRecord {
+      id: string;
+      userId: string;
+      date: string;
+      type: AttendanceType;
+      clockTime: string | null;
+      latitude: number | null;
+      longitude: number | null;
+      createdAt: Date;
+      updatedAt: Date;
+      user?: {
+        id: string;
+        name: string;
+        userId: string;
+        email: string;
+      };
+    }
+
+    interface FormattedShiftRecord {
+      id: string;
+      userId: string;
+      date: string;
+      startTime: string | null;
+      endTime: string | null;
+      shiftType: string;
+      location: string | null;
+      breakTime: number;
+      note: string | null;
+      status: string;
+      hasAttendance?: boolean;
+      user?: {
+        id: string;
+        name: string;
+        userId: string;
+        email: string;
+      };
+    }
+
+    interface FormattedExpenseRecord {
+      id: string;
+      userId: string;
+      date: string;
+      type: ExpenseType;
+      amount: number;
+      description: string | null;
+      departure: string | null;
+      arrival: string | null;
+      route: string | null;
+      referenceUrl: string | null;
+      status: string;
+      comment: string | null;
+      user?: {
+        id: string;
+        name: string;
+        userId: string;
+        email: string;
+      };
+    }
+    
+    let data: FormattedAttendanceRecord[] | FormattedShiftRecord[] | FormattedExpenseRecord[] = [];
 
     switch (type) {
       case 'attendance':
-        data = await prisma.attendance.findMany({
+        const attendanceData = await prisma.attendance.findMany({
           where: {
             userId: userId,
             date: {
@@ -354,15 +442,15 @@ export async function GET(request: Request) {
         });
 
         // 日付フォーマット
-        data = data.map(record => ({
+        data = attendanceData.map(record => ({
           ...record,
           date: formatJapanDate(record.date),
           clockTime: record.clockTime ? formatJapanDateTime(record.clockTime) : null
-        }));
+        })) as FormattedAttendanceRecord[];
         break;
 
       case 'shift':
-        data = await prisma.shift.findMany({
+        const shiftData = await prisma.shift.findMany({
           where: {
             userId: userId,
             date: {
@@ -384,16 +472,16 @@ export async function GET(request: Request) {
         });
 
         // 日付フォーマット
-        data = data.map(record => ({
+        data = shiftData.map(record => ({
           ...record,
           date: formatJapanDate(record.date),
           startTime: formatJapanDateTime(record.startTime),
           endTime: formatJapanDateTime(record.endTime)
-        }));
+        })) as FormattedShiftRecord[];
         break;
 
       case 'expense':
-        data = await prisma.expense.findMany({
+        const expenseData = await prisma.expense.findMany({
           where: {
             userId: userId,
             date: {
@@ -415,16 +503,16 @@ export async function GET(request: Request) {
         });
 
         // 日付フォーマット
-        data = data.map(record => ({
+        data = expenseData.map(record => ({
           ...record,
           date: formatJapanDate(record.date)
-        }));
+        })) as FormattedExpenseRecord[];
         break;
     }
 
     return NextResponse.json(data);
 
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("一括編集データ取得エラー:", error);
     return NextResponse.json(
       { error: "データ取得に失敗しました" },

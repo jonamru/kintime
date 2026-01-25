@@ -2,12 +2,18 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 
+interface SystemSettingUpdateData {
+  companyName?: string;
+  companyUserIdPrefix?: string;
+  headerCopyright?: string;
+}
+
 export async function PUT(request: Request) {
   try {
     console.log("TEST API - 開始");
     
     // 認証チェック
-    const currentUser = await getCurrentUser(request as any);
+    const currentUser = await getCurrentUser(request);
     console.log("TEST API - 認証ユーザー:", currentUser?.email, currentUser?.customRole.name);
     
     if (!currentUser) {
@@ -23,7 +29,7 @@ export async function PUT(request: Request) {
     console.log("TEST API - 既存設定:", settings);
     
     if (settings) {
-      const updateData: any = {};
+      const updateData: SystemSettingUpdateData = {};
       if (data.companyName !== undefined) updateData.companyName = data.companyName;
       if (data.companyUserIdPrefix !== undefined) updateData.companyUserIdPrefix = data.companyUserIdPrefix;
       if (data.headerCopyright !== undefined) updateData.headerCopyright = data.headerCopyright;
@@ -40,7 +46,7 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: "設定が見つかりません" }, { status: 404 });
     }
     
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("TEST API - エラー:", error);
     console.error("TEST API - エラー詳細:", {
       name: error?.constructor?.name,

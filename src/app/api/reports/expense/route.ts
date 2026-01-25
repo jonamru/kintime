@@ -4,6 +4,16 @@ import { getCurrentUser } from '@/lib/auth'
 import { hasPermission } from '@/lib/permissions'
 import { formatJapanDate } from '@/lib/dateUtils'
 import * as XLSX from 'xlsx'
+import type { User } from '@/types/common'
+
+interface UserWithPartner {
+  id: string;
+  name: string;
+  userId: string | null;
+  partner: {
+    name: string;
+  } | null;
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -37,7 +47,9 @@ export async function GET(request: NextRequest) {
 
     // 権限チェック
     const canViewAll = await hasPermission(currentUser.id, 'expenseManagement', 'viewAll')
-    
+    const canViewCompany = await hasPermission(currentUser.id, 'expenseManagement', 'viewCompany')
+    const canViewAssigned = await hasPermission(currentUser.id, 'expenseManagement', 'viewAssigned')
+
     if (scope === 'all' && !canViewAll) {
       return NextResponse.json({ error: '全員の経費を閲覧する権限がありません' }, { status: 403 })
     }
@@ -47,18 +59,18 @@ export async function GET(request: NextRequest) {
     const endDate = new Date(year, monthNum, 0)
 
     // 対象ユーザーを取得
-    let users: any[] = []
+    let users: UserWithPartner[] = []
     if (scope === 'user') {
       const targetUserIds = userIds.length > 0 ? userIds : (userId ? [userId] : [])
-      
+
       // 権限チェック - 自分以外のユーザーが含まれている場合
       const hasOtherUsers = targetUserIds.some(id => id !== currentUser.id)
-      if (hasOtherUsers && !canViewAll) {
+      if (hasOtherUsers && !canViewAll && !canViewCompany && !canViewAssigned) {
         return NextResponse.json({ error: '権限がありません' }, { status: 403 })
       }
-      
+
       users = await prisma.user.findMany({
-        where: { 
+        where: {
           id: { in: targetUserIds }
         },
         select: {
@@ -71,19 +83,22 @@ export async function GET(request: NextRequest) {
         },
         orderBy: { name: 'asc' }
       })
-      
+
       if (users.length === 0) {
         return NextResponse.json({ error: 'ユーザーが見つかりません' }, { status: 404 })
       }
-      
+
     } else if (scope === 'company') {
-      if (!canViewAll) {
+      if (!canViewAll && !canViewCompany) {
         return NextResponse.json({ error: '権限がありません' }, { status: 403 })
       }
-      
+
+      // 'self' means the user's own company (currentUser.partnerId), not necessarily the main company (null)
+      const targetPartnerId = partnerId === 'self' ? currentUser.partnerId : partnerId
+
       users = await prisma.user.findMany({
         where: {
-          partnerId: partnerId === 'self' ? null : partnerId
+          partnerId: targetPartnerId
         },
         select: {
           id: true,
@@ -95,7 +110,7 @@ export async function GET(request: NextRequest) {
         },
         orderBy: { name: 'asc' }
       })
-      
+
     } else if (scope === 'all') {
       users = await prisma.user.findMany({
         select: {
@@ -111,7 +126,7 @@ export async function GET(request: NextRequest) {
     }
 
     console.log(`Found ${users.length} users for expense report`)
-    
+
     if (users.length === 0) {
       return NextResponse.json({ error: 'ユーザーが見つかりません' }, { status: 404 })
     }
@@ -121,7 +136,7 @@ export async function GET(request: NextRequest) {
       // 複数ユーザーのExcel出力
       if (format === 'excel') {
         const workbook = XLSX.utils.book_new()
-        
+
         // 各ユーザーごとにシートを作成
         for (const user of users) {
           const expenses = await prisma.expense.findMany({
@@ -158,22 +173,22 @@ export async function GET(request: NextRequest) {
               formatJapanDate(expense.date),
               getDayOfWeek(new Date(expense.date)),
               getTypeText(expense.type),
-              `${expense.departure || ''} → ${expense.arrival || ''}`,
-              expense.route || '',
-              expense.amount,
+              (expense.type === 'TRANSPORT' || expense.type === 'COMMUTE_PASS') ? `${expense.departure || ''} → ${expense.arrival || ''}` : '',
+              (expense.type === 'TRANSPORT' || expense.type === 'COMMUTE_PASS') ? (expense.route || '') : (expense.description || ''),
+              expense.amount.toString(),
               expense.referenceUrl || ''
             ])
           ]
-          
+
           const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0)
           worksheetData.push([])
-          worksheetData.push(['合計', '', '', '', '', totalExpenses, ''])
+          worksheetData.push(['合計', '', '', '', '', totalExpenses.toString(), ''])
 
           const worksheet = XLSX.utils.aoa_to_sheet(worksheetData)
           const sheetName = `${user.name.substring(0, 10)}` // Excel制限に対応
           XLSX.utils.book_append_sheet(workbook, worksheet, sheetName)
         }
-        
+
         const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' })
         // ファイル名を選択範囲に応じて決定
         let fileName = ''
@@ -196,7 +211,7 @@ export async function GET(request: NextRequest) {
         } else {
           fileName = `経費管理表_複数ユーザー_${month}.xlsx`
         }
-        
+
         return new NextResponse(buffer, {
           headers: {
             'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -210,7 +225,7 @@ export async function GET(request: NextRequest) {
         const csvData = [
           ['氏名', 'ユーザーID', '日付', '曜日', '種別', '経路', '詳細路線', '金額', '参照URL']
         ]
-        
+
         for (const user of users) {
           const expenses = await prisma.expense.findMany({
             where: {
@@ -236,26 +251,27 @@ export async function GET(request: NextRequest) {
               default: return type
             }
           }
-          
+
           expenses.forEach(expense => {
             csvData.push([
               user.name,
               user.userId || user.id,
+              user.userId || user.id,
               formatJapanDate(expense.date),
               getDayOfWeek(new Date(expense.date)),
               getTypeText(expense.type),
-              `${expense.departure || ''} → ${expense.arrival || ''}`,
-              expense.route || '',
-              expense.amount,
+              (expense.type === 'TRANSPORT' || expense.type === 'COMMUTE_PASS') ? `${expense.departure || ''} → ${expense.arrival || ''}` : '',
+              (expense.type === 'TRANSPORT' || expense.type === 'COMMUTE_PASS') ? (expense.route || '') : (expense.description || ''),
+              expense.amount.toString(),
               expense.referenceUrl || ''
             ])
           })
         }
-        
-        const csvContent = csvData.map(row => 
+
+        const csvContent = csvData.map(row =>
           row.map(field => `"${String(field).replace(/"/g, '""')}"`).join(',')
         ).join('\n')
-        
+
         const bom = '\uFEFF'
         const csvBuffer = Buffer.from(bom + csvContent, 'utf8')
         // ファイル名を選択範囲に応じて決定
@@ -279,7 +295,7 @@ export async function GET(request: NextRequest) {
         } else {
           fileName = `経費管理表_複数ユーザー_${month}.csv`
         }
-        
+
         return new NextResponse(csvBuffer, {
           headers: {
             'Content-Type': 'text/csv; charset=utf-8',
@@ -292,9 +308,9 @@ export async function GET(request: NextRequest) {
       if (format === 'pdf') {
         try {
           const puppeteer = await import('puppeteer')
-          
+
           let combinedHtmlContent = ''
-          
+
           // 各ユーザーのPDFページを生成
           for (let userIndex = 0; userIndex < users.length; userIndex++) {
             const user = users[userIndex]
@@ -330,8 +346,8 @@ export async function GET(request: NextRequest) {
                 date: formatJapanDate(date),
                 dayOfWeek: getDayOfWeek(date),
                 type: getTypeText(expense.type),
-                route: `${expense.departure || ''} → ${expense.arrival || ''}`.replace(' → ', ' → '),
-                detailedRoute: expense.route || '',
+                route: (expense.type === 'TRANSPORT' || expense.type === 'COMMUTE_PASS') ? `${expense.departure || ''} → ${expense.arrival || ''}` : '',
+                detailedRoute: (expense.type === 'TRANSPORT' || expense.type === 'COMMUTE_PASS') ? (expense.route || '') : (expense.description || ''),
                 amount: expense.amount,
                 referenceUrl: expense.referenceUrl || '',
                 status: expense.status,
@@ -347,7 +363,7 @@ export async function GET(request: NextRequest) {
             }
 
             const pageBreak = userIndex > 0 ? 'page-break-before: always;' : ''
-            
+
             combinedHtmlContent += `
               <div style="${pageBreak}">
                 <h1>経費管理表</h1>
@@ -494,10 +510,10 @@ export async function GET(request: NextRequest) {
             headless: true,
             args: ['--no-sandbox', '--disable-setuid-sandbox']
           })
-          
+
           const page = await browser.newPage()
           await page.setContent(fullHtmlContent, { waitUntil: 'networkidle0' })
-          
+
           const pdfBuffer = await page.pdf({
             format: 'A4',
             landscape: orientation === 'landscape',
@@ -509,9 +525,9 @@ export async function GET(request: NextRequest) {
             },
             printBackground: true
           })
-          
+
           await browser.close()
-          
+
           // ファイル名を選択範囲に応じて決定
           let fileName = ''
           if (scope === 'user') {
@@ -533,21 +549,21 @@ export async function GET(request: NextRequest) {
           } else {
             fileName = `経費管理表_複数ユーザー_${month}.pdf`
           }
-          
-          return new NextResponse(pdfBuffer, {
+
+          return new NextResponse(Buffer.from(pdfBuffer), {
             headers: {
               'Content-Type': 'application/pdf',
               'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`
             }
           })
-          
-        } catch (error) {
+
+        } catch (error: unknown) {
           console.error('Multiple user PDF generation error:', error)
           return NextResponse.json({ error: 'PDF生成に失敗しました' }, { status: 500 })
         }
       }
     }
-    
+
     // 単一ユーザーの場合は既存のロジックを使用
     const user = users[0]
 
@@ -583,8 +599,8 @@ export async function GET(request: NextRequest) {
         date: formatJapanDate(date),
         dayOfWeek: getDayOfWeek(date),
         type: getTypeText(expense.type),
-        route: `${expense.departure || ''} → ${expense.arrival || ''}`.replace(' → ', ' → '),
-        detailedRoute: expense.route || '',
+        route: (expense.type === 'TRANSPORT' || expense.type === 'COMMUTE_PASS') ? `${expense.departure || ''} → ${expense.arrival || ''}` : '',
+        detailedRoute: (expense.type === 'TRANSPORT' || expense.type === 'COMMUTE_PASS') ? (expense.route || '') : (expense.description || ''),
         amount: expense.amount,
         referenceUrl: expense.referenceUrl || '',
         status: expense.status,
@@ -613,7 +629,7 @@ export async function GET(request: NextRequest) {
     // Excel出力
     if (format === 'excel') {
       const workbook = XLSX.utils.book_new()
-      
+
       const worksheetData = [
         ['経費管理表'],
         ['氏名', user.name],
@@ -622,7 +638,7 @@ export async function GET(request: NextRequest) {
         [],
         ['日付', '曜日', '種別', '経路', '詳細路線', '金額', '参照URL']
       ]
-      
+
       expenseRecords.forEach(expense => {
         worksheetData.push([
           expense.date,
@@ -630,19 +646,19 @@ export async function GET(request: NextRequest) {
           expense.type,
           expense.route,
           expense.detailedRoute,
-          expense.amount,
+          expense.amount.toString(),
           expense.referenceUrl
         ])
       })
-      
+
       worksheetData.push([])
-      worksheetData.push(['合計', '', '', '', '', summary.totalExpenses, ''])
+      worksheetData.push(['合計', '', '', '', '', summary.totalExpenses.toString(), ''])
 
       const worksheet = XLSX.utils.aoa_to_sheet(worksheetData)
       XLSX.utils.book_append_sheet(workbook, worksheet, '経費管理表')
-      
+
       const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' })
-      
+
       return new NextResponse(buffer, {
         headers: {
           'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -661,18 +677,18 @@ export async function GET(request: NextRequest) {
           expense.type,
           expense.route,
           expense.detailedRoute,
-          expense.amount,
+          expense.amount.toString(),
           expense.referenceUrl
         ])
       ]
-      
-      const csvContent = csvData.map(row => 
+
+      const csvContent = csvData.map(row =>
         row.map(field => `"${String(field).replace(/"/g, '""')}"`).join(',')
       ).join('\n')
-      
+
       const bom = '\uFEFF'
       const csvBuffer = Buffer.from(bom + csvContent, 'utf8')
-      
+
       return new NextResponse(csvBuffer, {
         headers: {
           'Content-Type': 'text/csv; charset=utf-8',
@@ -685,7 +701,7 @@ export async function GET(request: NextRequest) {
     if (format === 'pdf') {
       try {
         const puppeteer = await import('puppeteer')
-        
+
         const htmlContent = `
           <!DOCTYPE html>
           <html>
@@ -825,10 +841,10 @@ export async function GET(request: NextRequest) {
           headless: true,
           args: ['--no-sandbox', '--disable-setuid-sandbox']
         })
-        
+
         const page = await browser.newPage()
         await page.setContent(htmlContent, { waitUntil: 'networkidle0' })
-        
+
         const pdf = await page.pdf({
           format: 'A4',
           landscape: orientation === 'landscape',
@@ -840,18 +856,18 @@ export async function GET(request: NextRequest) {
           },
           printBackground: true
         })
-        
+
         await browser.close()
-        
+
         const fileName = `経費管理表_${user.name}(${user.userId || user.id})_${month}.pdf`
-        
-        return new NextResponse(pdf, {
+
+        return new NextResponse(Buffer.from(pdf), {
           headers: {
             'Content-Type': 'application/pdf',
             'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`
           }
         })
-      } catch (error) {
+      } catch (error: unknown) {
         console.error('PDF generation error:', error)
         return NextResponse.json({ error: 'PDF生成に失敗しました' }, { status: 500 })
       }
@@ -859,7 +875,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ error: 'サポートされていない形式です' }, { status: 400 })
 
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Expense report error:', error)
     return NextResponse.json({ error: 'レポートの生成に失敗しました' }, { status: 500 })
   }

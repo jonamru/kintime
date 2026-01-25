@@ -6,9 +6,15 @@ import { showAlert } from '@/lib/notification';
 import PageAccessGuard from "@/components/PageAccessGuard";
 import TimeBaseHeader from "@/components/TimeBaseHeader";
 
+interface UserSettings {
+  gpsEnabled?: boolean;
+  wakeUpEnabled?: boolean;
+  departureEnabled?: boolean;
+}
+
 export default function AttendancePage() {
-  const [todayAttendance, setTodayAttendance] = useState<any[]>([]);
-  const [userSettings, setUserSettings] = useState<any>(null);
+  const [todayAttendance, setTodayAttendance] = useState<{ id?: string; type: string; clockTime: string }[]>([]);
+  const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [loading, setLoading] = useState(false);
   const [gpsError, setGpsError] = useState<string | null>(null);
@@ -19,7 +25,7 @@ export default function AttendancePage() {
   useEffect(() => {
     // ページタイトルを設定
     document.title = "TimeBase - 勤怠打刻";
-    
+
     fetchTodayAttendance();
     fetchUserSettings();
   }, []);
@@ -40,18 +46,19 @@ export default function AttendancePage() {
       setIsGpsRequired(false);
       setGpsError(null);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userSettings]);
 
   const requestLocation = () => {
     console.log("GPS取得開始");
-    
+
     // HTTPS接続チェック
     if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
       setGpsError("位置情報を取得するにはHTTPS接続が必要です。");
       setGpsLoading(false);
       return;
     }
-    
+
     if (!navigator.geolocation) {
       setGpsError("このブラウザは位置情報をサポートしていません。");
       setGpsLoading(false);
@@ -64,7 +71,7 @@ export default function AttendancePage() {
 
     // 権限状態をチェック（対応ブラウザのみ）
     if (navigator.permissions) {
-      navigator.permissions.query({name: 'geolocation'}).then((result) => {
+      navigator.permissions.query({ name: 'geolocation' }).then((result) => {
         console.log("GPS権限状態:", result.state);
         if (result.state === 'denied') {
           setGpsError("位置情報の使用が拒否されています。ブラウザの設定で位置情報を許可してください。");
@@ -87,8 +94,8 @@ export default function AttendancePage() {
 
   const getLocationPosition = () => {
     // iOSの検出
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
-    
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !('MSStream' in window);
+
     // iOSの場合の特別な設定
     const options: PositionOptions = {
       enableHighAccuracy: false, // iOSではfalseの方が安定する場合がある
@@ -111,7 +118,7 @@ export default function AttendancePage() {
       (error) => {
         let errorMessage = "";
         let debugInfo = "";
-        
+
         switch (error.code) {
           case error.PERMISSION_DENIED:
             errorMessage = "位置情報の使用が拒否されました。";
@@ -134,14 +141,14 @@ export default function AttendancePage() {
             debugInfo = `エラーコード: ${error.code}, メッセージ: ${error.message}`;
             break;
         }
-        
+
         // 権限拒否は通常の動作なのでconsole.logを使用
         if (error.code === error.PERMISSION_DENIED) {
           console.log("GPS権限拒否:", errorMessage, debugInfo);
         } else {
           console.error("GPS取得エラー:", errorMessage, error, debugInfo);
         }
-        
+
         setGpsError(`${errorMessage}\n${debugInfo}`);
         setLocation(null);
         setGpsLoading(false);
@@ -157,7 +164,7 @@ export default function AttendancePage() {
         const data = await response.json();
         setTodayAttendance(data.attendance || []);
       }
-    } catch (error) {
+    } catch (error: unknown) {
       console.error("勤怠情報の取得に失敗しました:", error);
     }
   };
@@ -169,7 +176,7 @@ export default function AttendancePage() {
         const data = await response.json();
         setUserSettings(data);
       }
-    } catch (error) {
+    } catch (error: unknown) {
       console.error("ユーザー設定の取得に失敗しました:", error);
     }
   };
@@ -208,7 +215,7 @@ export default function AttendancePage() {
         const errorData = await response.json();
         showAlert(errorData.error || "打刻に失敗しました");
       }
-    } catch (error) {
+    } catch {
       showAlert("エラーが発生しました");
     } finally {
       setLoading(false);
@@ -223,7 +230,6 @@ export default function AttendancePage() {
     const hasWakeUp = getButtonStatus("WAKE_UP");
     const hasDeparture = getButtonStatus("DEPARTURE");
     const hasClockIn = getButtonStatus("CLOCK_IN");
-    const hasClockOut = getButtonStatus("CLOCK_OUT");
 
     switch (type) {
       case "WAKE_UP":
@@ -253,9 +259,9 @@ export default function AttendancePage() {
 
   const getButtonClass = (type: string) => {
     const isDisabled = loading || getButtonStatus(type) || !isClockingAllowed(type);
-    
+
     const baseClass = "inline-block w-full max-w-72 py-5 mb-4 border-none rounded-xl text-xl font-bold text-white cursor-pointer transition-all duration-300 shadow-lg";
-    
+
     if (isDisabled) {
       return `${baseClass} bg-gray-400 cursor-not-allowed`;
     }
@@ -281,18 +287,6 @@ export default function AttendancePage() {
     });
   };
 
-  const formatCurrentTime = (date: Date) => {
-    const year = date.getFullYear();
-    const month = date.getMonth() + 1;
-    const day = date.getDate();
-    const weekday = ['日', '月', '火', '水', '木', '金', '土'][date.getDay()];
-    const hours = date.getHours().toString().padStart(2, '0');
-    const minutes = date.getMinutes().toString().padStart(2, '0');
-    const seconds = date.getSeconds().toString().padStart(2, '0');
-    
-    return `${year}年${month}月${day}日（${weekday}） ${hours}:${minutes}:${seconds}`;
-  };
-
   if (!userSettings) {
     return <div className="min-h-screen bg-gray-100 flex items-center justify-center">
       <div>Loading...</div>
@@ -301,7 +295,7 @@ export default function AttendancePage() {
 
   return (
     <PageAccessGuard page="attendance">
-      <TimeBaseHeader 
+      <TimeBaseHeader
         rightAction={
           <a
             href="/dashboard"
@@ -319,7 +313,7 @@ export default function AttendancePage() {
       {/* メインコンテンツエリア */}
       <main className="flex justify-center items-center px-5 py-10 min-h-[calc(100vh-4rem)] bg-[#f4f7fc]">
         <div className="w-full max-w-lg text-center bg-white p-10 rounded-2xl shadow-xl">
-          
+
           {/* 時計表示 */}
           <div className="mb-8">
             <h1 className="text-5xl font-bold text-gray-800 mb-2 tracking-wider">
@@ -334,46 +328,43 @@ export default function AttendancePage() {
           <div className="mb-8 py-3 px-4 bg-[#eaf2fd] text-[#4A90E2] rounded-lg text-lg font-medium">
             現在のステータス: <strong>
               {todayAttendance.length === 0 ? "勤務前" :
-               todayAttendance.some(a => a.type === "CLOCK_OUT") ? "退勤済み" :
-               todayAttendance.some(a => a.type === "CLOCK_IN") ? "勤務中" :
-               todayAttendance.some(a => a.type === "DEPARTURE") ? "出発済み" :
-               todayAttendance.some(a => a.type === "WAKE_UP") ? "起床報告済み" :
-               "勤務前"}
+                todayAttendance.some(a => a.type === "CLOCK_OUT") ? "退勤済み" :
+                  todayAttendance.some(a => a.type === "CLOCK_IN") ? "勤務中" :
+                    todayAttendance.some(a => a.type === "DEPARTURE") ? "出発済み" :
+                      todayAttendance.some(a => a.type === "WAKE_UP") ? "起床報告済み" :
+                        "勤務前"}
             </strong>
           </div>
 
           {userSettings.gpsEnabled && (
-            <div className={`mb-6 border rounded-lg p-4 ${
-              gpsError 
-                ? 'bg-red-50 border-red-200' 
-                : location 
-                  ? 'bg-green-50 border-green-200' 
-                  : 'bg-yellow-50 border-yellow-200'
-            }`}>
+            <div className={`mb-6 border rounded-lg p-4 ${gpsError
+              ? 'bg-red-50 border-red-200'
+              : location
+                ? 'bg-green-50 border-green-200'
+                : 'bg-yellow-50 border-yellow-200'
+              }`}>
               <div className="flex items-center justify-between">
-                <span className={`text-sm ${
-                  gpsError 
-                    ? 'text-red-700' 
-                    : location 
-                      ? 'text-green-700' 
-                      : 'text-yellow-700'
-                }`}>
+                <span className={`text-sm ${gpsError
+                  ? 'text-red-700'
+                  : location
+                    ? 'text-green-700'
+                    : 'text-yellow-700'
+                  }`}>
                   📍 GPS情報取得: {
                     gpsLoading ? '取得中...' :
-                    location ? '取得完了' : 
-                    gpsError ? '取得失敗' : 
-                    '待機中'
+                      location ? '取得完了' :
+                        gpsError ? '取得失敗' :
+                          '待機中'
                   }
                 </span>
                 {(gpsError || (!location && !gpsLoading)) && (
                   <button
                     onClick={requestLocation}
                     disabled={gpsLoading}
-                    className={`px-3 py-1 text-white text-xs rounded transition-colors ${
-                      gpsLoading 
-                        ? 'bg-gray-400 cursor-not-allowed' 
-                        : 'bg-red-600 hover:bg-red-700'
-                    }`}
+                    className={`px-3 py-1 text-white text-xs rounded transition-colors ${gpsLoading
+                      ? 'bg-gray-400 cursor-not-allowed'
+                      : 'bg-red-600 hover:bg-red-700'
+                      }`}
                   >
                     {gpsLoading ? '取得中...' : gpsError ? '再取得' : '取得開始'}
                   </button>
@@ -410,7 +401,7 @@ export default function AttendancePage() {
 
           {/* アクションボタン */}
           <div className="mb-10 space-y-4">
-              {userSettings.wakeUpEnabled && (
+            {userSettings.wakeUpEnabled && (
               <button
                 onClick={() => handleClock("WAKE_UP")}
                 disabled={loading || getButtonStatus("WAKE_UP") || !isClockingAllowed("WAKE_UP") || (isGpsRequired && !location)}
@@ -422,7 +413,7 @@ export default function AttendancePage() {
                 起床報告
               </button>
             )}
-            
+
             {userSettings.departureEnabled && (
               <button
                 onClick={() => handleClock("DEPARTURE")}
@@ -505,13 +496,13 @@ export default function AttendancePage() {
               </ul>
             )}
           </div>
-          
+
           {/* 履歴リンク */}
           <a
             href="/attendance/history"
             className="inline-block mt-8 text-[#4A90E2] no-underline font-medium hover:underline"
           >
-            すべての履歴を見る 
+            すべての履歴を見る
             <svg className="inline-block w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
             </svg>

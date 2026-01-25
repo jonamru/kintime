@@ -3,10 +3,11 @@ import { prisma } from "@/lib/prisma";
 import { ExpenseType, ExpenseStatus } from '@prisma/client';
 import { getCurrentUser } from "@/lib/auth";
 import { canEditExpenseByDate } from "@/lib/permissions";
+import type { User, Attendance, Shift, Expense, CustomRole, Partner, ApiResponse, BulkEditPermissions } from "@/types/common";
 
 export async function GET(request: Request) {
   try {
-    const currentUser = await getCurrentUser(request as any);
+    const currentUser = await getCurrentUser(request);
     
     if (!currentUser) {
       return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
@@ -22,7 +23,7 @@ export async function GET(request: Request) {
     });
 
     return NextResponse.json(expenses);
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("経費取得エラー:", error);
     return NextResponse.json(
       { error: "経費の取得に失敗しました" },
@@ -35,7 +36,7 @@ export async function POST(request: Request) {
   try {
     console.log("=== 経費申請API開始 ===");
     
-    const currentUser = await getCurrentUser(request as any);
+    const currentUser = await getCurrentUser(request);
     
     if (!currentUser) {
       return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
@@ -104,22 +105,26 @@ export async function POST(request: Request) {
       console.log("経費作成成功:", { id: expense.id, amount: expense.amount });
     } catch (dbError) {
       console.error("経費作成データベースエラー:", dbError);
-      console.error("Prismaエラー詳細:", {
-        code: (dbError as any)?.code,
-        message: dbError instanceof Error ? dbError.message : String(dbError),
-        meta: (dbError as any)?.meta,
-        clientVersion: (dbError as any)?.clientVersion
-      });
+      
+      if (dbError instanceof Error) {
+        console.error("エラー詳細:", {
+          message: dbError.message,
+          stack: dbError.stack
+        });
+        return NextResponse.json({ 
+          error: "データベースエラーが発生しました",
+          details: dbError.message
+        }, { status: 500 });
+      }
+      
       return NextResponse.json({ 
-        error: "データベースエラーが発生しました",
-        details: dbError instanceof Error ? dbError.message : String(dbError),
-        code: (dbError as any)?.code 
+        error: "データベースエラーが発生しました"
       }, { status: 500 });
     }
 
     console.log("=== 経費申請API完了 ===");
     return NextResponse.json(expense);
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("経費作成エラー:", error);
     console.error("エラー詳細:", {
       name: error instanceof Error ? error.name : 'Unknown',

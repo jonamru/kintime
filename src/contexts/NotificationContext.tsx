@@ -53,7 +53,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
       message,
     };
     setNotifications(prev => [...prev, notification]);
-    
+
     // 成功通知は自動的に3秒後に閉じる
     if (type === 'success') {
       setTimeout(() => {
@@ -112,18 +112,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
     }
   };
 
-  const getButtonClasses = (type: NotificationType) => {
-    switch (type) {
-      case 'success':
-        return 'bg-green-600 hover:bg-green-700 text-white';
-      case 'error':
-        return 'bg-red-600 hover:bg-red-700 text-white';
-      case 'warning':
-        return 'bg-yellow-600 hover:bg-yellow-700 text-white';
-      case 'info':
-        return 'bg-blue-600 hover:bg-blue-700 text-white';
-    }
-  };
+
 
   // 最初の通知のみ表示
   const currentNotification = notifications[0];
@@ -131,12 +120,12 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
   return (
     <NotificationContext.Provider value={{ showNotification, showConfirm }}>
       {children}
-      
+
       {/* トースト通知表示 */}
       {currentNotification && (
         <div className="fixed top-4 right-4 z-50 pointer-events-auto animate-slide-in">
           <div className={`max-w-sm w-full p-4 rounded-lg shadow-lg border ${getColorClasses(currentNotification.type)} cursor-pointer`}
-               onClick={() => closeNotification(currentNotification.id)}>
+            onClick={() => closeNotification(currentNotification.id)}>
             <div className="flex items-center space-x-3">
               <span className="text-xl">{getIcon(currentNotification.type)}</span>
               <div className="flex-1">
@@ -155,7 +144,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
           </div>
         </div>
       )}
-      
+
       {/* 確認ダイアログ */}
       {confirmDialog && (
         <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none">

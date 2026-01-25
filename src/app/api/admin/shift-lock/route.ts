@@ -21,13 +21,30 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const year = parseInt(searchParams.get('year') || '');
     const month = parseInt(searchParams.get('month') || '');
-    
+
     if (!year || !month) {
       return NextResponse.json({ error: "年月が指定されていません" }, { status: 400 });
     }
 
     // システム設定を取得（デフォルト値を使用）
     const registrationDeadline = 3; // デフォルトのシフト登録期限
+
+    // 自動ロック処理: 解除から1時間経過したものをロックに戻す
+    // クライアント側（adminページ）での表示時に期限切れのものを反映させるため
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    await prisma.shiftRegistrationLock.updateMany({
+      where: {
+        year,
+        month,
+        isUnlocked: true,
+        unlockedAt: {
+          lt: oneHourAgo
+        }
+      },
+      data: {
+        isUnlocked: false
+      }
+    });
 
     // 全ユーザーとそのロック状態を取得
     const users = await prisma.user.findMany({
@@ -66,7 +83,7 @@ export async function GET(request: Request) {
       isAfterDeadline,
       registrationDeadline: registrationDeadline,
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("ロック状態取得エラー:", error);
     return NextResponse.json(
       { error: "ロック状態の取得に失敗しました" },
@@ -121,9 +138,9 @@ export async function POST(request: Request) {
         }
       });
 
-      return NextResponse.json({ 
+      return NextResponse.json({
         message: "ロックを解除しました",
-        success: true 
+        success: true
       });
     } else if (action === 'lock') {
       // ロック再設定
@@ -148,14 +165,14 @@ export async function POST(request: Request) {
         }
       });
 
-      return NextResponse.json({ 
+      return NextResponse.json({
         message: "ロックを再設定しました",
-        success: true 
+        success: true
       });
     } else {
       return NextResponse.json({ error: "無効なアクションです" }, { status: 400 });
     }
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("ロック操作エラー:", error);
     return NextResponse.json(
       { error: "ロック操作に失敗しました" },

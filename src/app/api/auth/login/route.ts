@@ -45,6 +45,14 @@ export async function POST(request: Request) {
       );
     }
 
+    // アカウントが無効化されているかチェック
+    if (user.isActive === false) {
+      return NextResponse.json(
+        { error: "アカウントが無効化されています" },
+        { status: 403 }
+      );
+    }
+
     // パスワードを検証
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
@@ -87,9 +95,10 @@ export async function POST(request: Request) {
     // HTTPOnlyクッキーとしてトークンを設定
     response.cookies.set("auth-token", token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
+      secure: process.env.NODE_ENV === "production", // 本番環境ではHTTPSのみ
+      sameSite: "strict", // CSRF対策強化
       maxAge: 24 * 60 * 60, // 24時間
+      path: "/", // 全パスで有効
     });
 
     return response;

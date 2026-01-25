@@ -2,10 +2,18 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions";
+import type { User, Attendance, Shift, Expense, CustomRole, Partner, ApiResponse, BulkEditPermissions } from "@/types/common";
+
+interface SystemSettingUpdateData {
+  shiftApprovalDeadlineDays?: number;
+  companyName?: string | null;
+  companyUserIdPrefix?: string | null;
+  headerCopyright?: string | null;
+}
 
 export async function GET(request: Request) {
   try {
-    const currentUser = await getCurrentUser(request as any);
+    const currentUser = await getCurrentUser(request);
     
     if (!currentUser) {
       return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
@@ -21,7 +29,7 @@ export async function GET(request: Request) {
     }
 
     return NextResponse.json(settings);
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("システム設定取得エラー:", error);
     return NextResponse.json(
       { error: "システム設定の取得に失敗しました" },
@@ -32,7 +40,7 @@ export async function GET(request: Request) {
 
 export async function PUT(request: Request) {
   try {
-    const currentUser = await getCurrentUser(request as any);
+    const currentUser = await getCurrentUser(request);
     
     if (!currentUser) {
       return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
@@ -105,12 +113,12 @@ export async function PUT(request: Request) {
       //           { status: 400 }
       //         );
       //       }
-      //     } catch (error) {
+      //     } catch (error: unknown) {
       //       // SystemSetting テーブルがまだ存在しない場合は続行
       //       console.log("SystemSetting table not found, continuing with creation");
       //     }
       //   }
-      // } catch (error) {
+      // } catch (error: unknown) {
       //   console.log("Prefix duplicate check failed, continuing:", error);
       // }
     }
@@ -126,7 +134,7 @@ export async function PUT(request: Request) {
     let settings = await prisma.systemSetting.findFirst();
     console.log("既存の設定:", settings);
     
-    const updateData: any = {};
+    const updateData: SystemSettingUpdateData = {};
     if (shiftApprovalDeadlineDays !== undefined) updateData.shiftApprovalDeadlineDays = shiftApprovalDeadlineDays;
     if (companyName !== undefined) updateData.companyName = companyName || null;
     if (companyUserIdPrefix !== undefined) updateData.companyUserIdPrefix = companyUserIdPrefix?.trim().toUpperCase() || null;
@@ -150,7 +158,7 @@ export async function PUT(request: Request) {
     }
 
     return NextResponse.json(settings);
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("システム設定更新エラー - 詳細:", {
       error: error,
       message: error instanceof Error ? error.message : "Unknown error",

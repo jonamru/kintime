@@ -1,3 +1,4 @@
+
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getCurrentUser } from '@/lib/auth'
@@ -5,6 +6,27 @@ import { hasPermission } from '@/lib/permissions'
 import { formatJapanDate } from '@/lib/dateUtils'
 import { createRequestCache } from '@/lib/requestCache'
 import * as XLSX from 'xlsx'
+
+interface UserWithPartner {
+  id: string;
+  name: string;
+  userId: string | null;
+  partner: {
+    name: string;
+  } | null;
+}
+
+interface AttendanceRecord {
+  date: string;
+  dayOfWeek: string;
+  status: string;
+  workplace: string;
+  startTime: string;
+  endTime: string;
+  breakTime?: string;
+  actualWorkHours?: string;
+  [key: string]: string | undefined;
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -25,12 +47,11 @@ export async function GET(request: NextRequest) {
     const type = searchParams.get('type') || 'full'
     const format = searchParams.get('format') || 'json'
     const orientation = searchParams.get('orientation') || 'landscape'
-    
+
     // ページネーションパラメータを追加
     const page = parseInt(searchParams.get('page') || '1')
     const limit = parseInt(searchParams.get('limit') || '100')
-    const skip = (page - 1) * limit
-    
+
     console.log('Attendance レポート API params:', { month, scope, userId, userIds, partnerId, type, format, orientation, page, limit })
 
     if (!month) {
@@ -48,8 +69,21 @@ export async function GET(request: NextRequest) {
     // 権限チェック（キャッシュ使用）
     const canViewAll = await hasPermission(currentUser.id, 'attendanceManagement', 'viewAll', cache)
     const canViewCompany = await hasPermission(currentUser.id, 'attendanceManagement', 'viewCompany', cache)
-    
+    const canViewAssigned = await hasPermission(currentUser.id, 'attendanceManagement', 'viewAssigned', cache)
+
+    // Debug Permissions detail
+    if (currentUser.customRole && currentUser.customRole.permissions) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const perms = currentUser.customRole.permissions as any;
+      console.log('[API Debug] Attendance Permissions Raw:', JSON.stringify(perms.attendanceManagement, null, 2));
+    } else {
+      console.log('[API Debug] No custom role or permissions found');
+    }
+
+    console.log('[API Debug] Permissions Evaluated:', { canViewAll, canViewCompany, canViewAssigned });
+
     if (scope === 'all' && !canViewAll) {
+      console.log('[API Debug] Blocked: scope=all but !canViewAll');
       return NextResponse.json({ error: '全員の勤怠を閲覧する権限がありません' }, { status: 403 })
     }
 
@@ -58,18 +92,25 @@ export async function GET(request: NextRequest) {
     const endDate = new Date(year, monthNum, 0)
 
     // 対象ユーザーを取得
-    let users: any[] = []
+    let users: UserWithPartner[] = []
     if (scope === 'user') {
       const targetUserIds = userIds.length > 0 ? userIds : (userId ? [userId] : [])
-      
+      console.log('[API Debug] Target User IDs:', targetUserIds);
+
       // 権限チェック - 自分以外のユーザーが含まれている場合
       const hasOtherUsers = targetUserIds.some(id => id !== currentUser.id)
-      if (hasOtherUsers && !canViewAll && !canViewCompany) {
+      console.log('[API Debug] Has other users:', hasOtherUsers);
+
+      if (hasOtherUsers && !canViewAll && !canViewCompany && !canViewAssigned) {
+        console.log('[API Debug] Blocked: hasOtherUsers and no permission');
         return NextResponse.json({ error: '権限がありません' }, { status: 403 })
       }
-      
+
+      // viewAssignedのみの場合、対象ユーザーが自分の担当ユーザーか確認する追加チェックが必要かもしれないが、
+      // まずはエラーの原因特定のためログを追加して様子見。
+
       users = await prisma.user.findMany({
-        where: { 
+        where: {
           id: { in: targetUserIds }
         },
         select: {
@@ -82,19 +123,22 @@ export async function GET(request: NextRequest) {
         },
         orderBy: { name: 'asc' }
       })
-      
+
       if (users.length === 0) {
         return NextResponse.json({ error: 'ユーザーが見つかりません' }, { status: 404 })
       }
-      
+
     } else if (scope === 'company') {
       if (!canViewAll && !canViewCompany) {
         return NextResponse.json({ error: '権限がありません' }, { status: 403 })
       }
-      
+
+      // 'self' means the user's own company (currentUser.partnerId), not necessarily the main company (null)
+      const targetPartnerId = partnerId === 'self' ? currentUser.partnerId : partnerId
+
       users = await prisma.user.findMany({
         where: {
-          partnerId: partnerId === 'self' ? null : partnerId
+          partnerId: targetPartnerId
         },
         select: {
           id: true,
@@ -106,7 +150,7 @@ export async function GET(request: NextRequest) {
         },
         orderBy: { name: 'asc' }
       })
-      
+
     } else if (scope === 'all') {
       users = await prisma.user.findMany({
         select: {
@@ -122,7 +166,7 @@ export async function GET(request: NextRequest) {
     }
 
     console.log(`Found ${users.length} users for attendance report`)
-    
+
     if (users.length === 0) {
       return NextResponse.json({ error: 'ユーザーが見つかりません' }, { status: 404 })
     }
@@ -164,18 +208,18 @@ export async function GET(request: NextRequest) {
         },
         shifts
       }
-      
+
       if (format === 'json') {
         return NextResponse.json(multiUserReport)
       }
-      
+
       // 複数ユーザーのExcel出力
       if (format === 'excel') {
         const workbook = XLSX.utils.book_new()
-        
+
         // 全ユーザーの勤怠・経費データを一括取得（N+1問題を回避）
         const allUserIds = users.map(u => u.id)
-        
+
         const [allAttendances, allExpenses] = await Promise.all([
           prisma.attendance.findMany({
             where: {
@@ -203,25 +247,25 @@ export async function GET(request: NextRequest) {
             }
           })
         ])
-        
+
         // ユーザーIDごとにデータをグループ化
-        const attendancesByUser = new Map()
-        const expensesByUser = new Map()
-        
+        const attendancesByUser = new Map<string, typeof allAttendances>()
+        const expensesByUser = new Map<string, typeof allExpenses>()
+
         allAttendances.forEach(attendance => {
           if (!attendancesByUser.has(attendance.userId)) {
             attendancesByUser.set(attendance.userId, [])
           }
-          attendancesByUser.get(attendance.userId).push(attendance)
+          attendancesByUser.get(attendance.userId)?.push(attendance)
         })
-        
+
         allExpenses.forEach(expense => {
           if (!expensesByUser.has(expense.userId)) {
             expensesByUser.set(expense.userId, [])
           }
-          expensesByUser.get(expense.userId).push(expense)
+          expensesByUser.get(expense.userId)?.push(expense)
         })
-        
+
         // 各ユーザーごとにシートを作成
         for (const user of users) {
           const userShifts = shifts.filter(s => s.userId === user.id)
@@ -236,29 +280,29 @@ export async function GET(request: NextRequest) {
           let absences = 0
           let lateCount = 0
           const lastDayOfMonth = new Date(year, monthNum, 0).getDate()
-          
+
           for (let day = 1; day <= lastDayOfMonth; day++) {
             const date = new Date(year, monthNum - 1, day)
             const dateString = formatJapanDate(date)
             const dayOfWeek = dayNames[date.getDay()]
 
-            const shift = userShifts.find(s => formatJapanDate(s.date) === dateString)
-            const dayAttendances = userAttendances.filter(a => formatJapanDate(a.date) === dateString)
-            
-            const wakeupRecord = dayAttendances.find(a => a.type === 'WAKE_UP')
-            const departureRecord = dayAttendances.find(a => a.type === 'DEPARTURE')
-            const clockInRecord = dayAttendances.find(a => a.type === 'CLOCK_IN')
-            const clockOutRecord = dayAttendances.find(a => a.type === 'CLOCK_OUT')
-            
+            const shift = userShifts.find((s: { date: Date }) => formatJapanDate(s.date) === dateString)
+            const dayAttendances = userAttendances.filter((a: { date: Date; type: string; userId: string }) => formatJapanDate(a.date) === dateString)
+
+            const wakeupRecord = dayAttendances.find((a: { type: string }) => a.type === 'WAKE_UP')
+            const departureRecord = dayAttendances.find((a: { type: string }) => a.type === 'DEPARTURE')
+            const clockInRecord = dayAttendances.find((a: { type: string }) => a.type === 'CLOCK_IN')
+            const clockOutRecord = dayAttendances.find((a: { type: string }) => a.type === 'CLOCK_OUT')
+
             const dayExpenses = userExpenses
-              .filter(e => formatJapanDate(e.date) === dateString)
-              .reduce((sum, e) => sum + e.amount, 0)
+              .filter((e: { date: Date; amount: number }) => formatJapanDate(e.date) === dateString)
+              .reduce((sum: number, e: { amount: number }) => sum + e.amount, 0)
 
             let status = '公休'
             let workplace = '-'
             let startTime = ''
             let endTime = ''
-            let alerts: string[] = []
+            const alerts: string[] = []
 
             if (shift && status !== '欠勤') {
               status = '出勤'
@@ -308,8 +352,8 @@ export async function GET(request: NextRequest) {
               }
             }
 
-            const record: any = {
-              date: `${year}/${monthNum}/${day}`,
+            const record: AttendanceRecord = {
+              date: `${year} /${monthNum}/${day} `,
               dayOfWeek,
               status,
               workplace,
@@ -321,8 +365,8 @@ export async function GET(request: NextRequest) {
               const breakMinutes = shift.breakTime || 0
               const breakHours = Math.floor(breakMinutes / 60)
               const remainingMinutes = breakMinutes % 60
-              record.breakTime = `${breakHours}:${remainingMinutes.toString().padStart(2, '0')}`
-              
+              record.breakTime = `${breakHours}:${remainingMinutes.toString().padStart(2, '0')} `
+
               // 実働時間（提出用は予定時間ベースで計算）
               if (type === 'submission' || type === 'submission_with_expenses') {
                 // シフトの開始時間と終了時間から計算
@@ -332,7 +376,7 @@ export async function GET(request: NextRequest) {
                 const plannedWorkMinutes = totalShiftMinutes - breakMinutes
                 const hours = Math.floor(plannedWorkMinutes / 60)
                 const minutes = Math.floor(plannedWorkMinutes % 60)
-                record.actualWorkHours = `${hours}:${minutes.toString().padStart(2, '0')}`
+                record.actualWorkHours = `${hours}:${minutes.toString().padStart(2, '0')} `
               } else {
                 // 全情報表示版は実際の打刻時間ベースで計算
                 if (clockOutRecord && clockInRecord) {
@@ -340,7 +384,7 @@ export async function GET(request: NextRequest) {
                   const actualWorkMinutes = totalMinutes - breakMinutes
                   const hours = Math.floor(actualWorkMinutes / 60)
                   const minutes = Math.floor(actualWorkMinutes % 60)
-                  record.actualWorkHours = `${hours}:${minutes.toString().padStart(2, '0')}`
+                  record.actualWorkHours = `${hours}:${minutes.toString().padStart(2, '0')} `
                 } else {
                   record.actualWorkHours = '-'
                 }
@@ -351,23 +395,23 @@ export async function GET(request: NextRequest) {
             }
 
             if (type === 'full' || type === 'submission_with_expenses') {
-              record.expenses = dayExpenses
-              
+              record.expenses = dayExpenses.toString().toString()
+
               if (type === 'full') {
-                record.wakeupReport = wakeupRecord ? new Date(wakeupRecord.clockTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }) : null
-                record.departureReport = departureRecord ? new Date(departureRecord.clockTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }) : null
-                record.clockIn = clockInRecord ? new Date(clockInRecord.clockTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' }) : null
-                record.clockOut = clockOutRecord ? new Date(clockOutRecord.clockTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' }) : null
+                record.wakeupReport = wakeupRecord ? new Date(wakeupRecord.clockTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }) : undefined
+                record.departureReport = departureRecord ? new Date(departureRecord.clockTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }) : undefined
+                record.clockIn = clockInRecord ? new Date(clockInRecord.clockTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' }) : undefined
+                record.clockOut = clockOutRecord ? new Date(clockOutRecord.clockTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' }) : undefined
                 if (clockOutRecord && clockInRecord && shift) {
                   const totalMinutes = (new Date(clockOutRecord.clockTime).getTime() - new Date(clockInRecord.clockTime).getTime()) / (1000 * 60)
                   const actualWorkMinutes = totalMinutes - (shift.breakTime || 0)
                   const hours = Math.floor(actualWorkMinutes / 60)
                   const minutes = Math.floor(actualWorkMinutes % 60)
-                  record.workHours = `${hours}:${minutes.toString().padStart(2, '0')}`
+                  record.workHours = `${hours}:${minutes.toString().padStart(2, '0')} `
                 } else {
-                  record.workHours = null
+                  record.workHours = undefined
                 }
-                record.alerts = alerts
+                record.alerts = alerts.join(", ")
               }
             }
 
@@ -376,15 +420,15 @@ export async function GET(request: NextRequest) {
 
           // ワークシートデータを作成（レポートタイプに応じて）
           const worksheetData = [
-            [`${user.name}(${user.userId || user.id}) - 勤務管理表`],
-            [`対象年月: ${month}`],
+            [`${user.name} (${user.userId || user.id}) - 勤務管理表`],
+            [`対象年月: ${month} `],
             [],
             // ヘッダー行
-            ...(type === 'submission' 
+            ...(type === 'submission'
               ? [['日付', '曜日', '勤怠', '勤務地', '開始時間', '終了時間', '休憩時間', '実働時間']]
               : type === 'submission_with_expenses'
-              ? [['日付', '曜日', '勤怠', '勤務地', '開始時間', '終了時間', '休憩時間', '実働時間', '交通費']]
-              : [['日付', '曜日', '勤怠', '勤務地', '開始時間', '終了時間', '起床報告', '出発報告', '出勤', '退勤', '勤務時間', 'アラート', '経費合計']]
+                ? [['日付', '曜日', '勤怠', '勤務地', '開始時間', '終了時間', '休憩時間', '実働時間', '交通費']]
+                : [['日付', '曜日', '勤怠', '勤務地', '開始時間', '終了時間', '起床報告', '出発報告', '出勤', '退勤', '勤務時間', 'アラート', '経費合計']]
             ),
             // データ行
             ...records.map(record => {
@@ -409,7 +453,7 @@ export async function GET(request: NextRequest) {
                   record.endTime,
                   record.breakTime || '-',
                   record.actualWorkHours || '-',
-                  record.expenses ? `¥${record.expenses.toLocaleString()}` : '-'
+                  record.expenses ? `¥${record.expenses.toLocaleString()} ` : '-'
                 ]
               } else {
                 return [
@@ -424,18 +468,18 @@ export async function GET(request: NextRequest) {
                   record.clockIn || '-',
                   record.clockOut || '-',
                   record.workHours || '-',
-                  record.alerts?.join(', ') || '-',
-                  record.expenses ? `¥${record.expenses.toLocaleString()}` : '-'
+                  record.alerts || '-',
+                  record.expenses ? `¥${record.expenses.toLocaleString()} ` : '-'
                 ]
               }
             })
           ]
 
           const worksheet = XLSX.utils.aoa_to_sheet(worksheetData)
-          const sheetName = `${user.name.substring(0, 10)}` // Excel制限に対応
+          const sheetName = `${user.name.substring(0, 10)} ` // Excel制限に対応
           XLSX.utils.book_append_sheet(workbook, worksheet, sheetName)
         }
-        
+
         const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' })
         // ファイル名を選択範囲に応じて決定
         let fileName = ''
@@ -458,29 +502,29 @@ export async function GET(request: NextRequest) {
         } else {
           fileName = `勤務管理表_複数ユーザー_${type}_${month}.xlsx`
         }
-        
+
         return new NextResponse(buffer, {
           headers: {
             'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`
+            'Content-Disposition': `attachment; filename *= UTF - 8''${encodeURIComponent(fileName)} `
           }
         })
       }
-      
+
       // 複数ユーザーのCSV出力（統合形式）
       if (format === 'csv') {
         // レポートタイプに応じたヘッダー
         const csvData = [
-          type === 'submission' 
+          type === 'submission'
             ? ['氏名', 'ユーザーID', '日付', '曜日', '勤怠', '勤務地', '開始時間', '終了時間', '休憩時間', '実働時間']
             : type === 'submission_with_expenses'
-            ? ['氏名', 'ユーザーID', '日付', '曜日', '勤怠', '勤務地', '開始時間', '終了時間', '休憩時間', '実働時間', '交通費']
-            : ['氏名', 'ユーザーID', '日付', '曜日', '勤怠', '勤務地', '開始時間', '終了時間', '起床報告', '出発報告', '出勤', '退勤', '勤務時間', 'アラート', '経費合計']
+              ? ['氏名', 'ユーザーID', '日付', '曜日', '勤怠', '勤務地', '開始時間', '終了時間', '休憩時間', '実働時間', '交通費']
+              : ['氏名', 'ユーザーID', '日付', '曜日', '勤怠', '勤務地', '開始時間', '終了時間', '起床報告', '出発報告', '出勤', '退勤', '勤務時間', 'アラート', '経費合計']
         ]
-        
+
         // 全ユーザーの勤怠・経費データを一括取得（N+1問題を回避）
         const allUserIds = users.map(u => u.id)
-        
+
         const [allAttendances, allExpenses] = await Promise.all([
           prisma.attendance.findMany({
             where: {
@@ -508,25 +552,25 @@ export async function GET(request: NextRequest) {
             }
           })
         ])
-        
+
         // ユーザーIDごとにデータをグループ化
-        const attendancesByUser = new Map()
-        const expensesByUser = new Map()
-        
+        const attendancesByUser = new Map<string, typeof allAttendances>()
+        const expensesByUser = new Map<string, typeof allExpenses>()
+
         allAttendances.forEach(attendance => {
           if (!attendancesByUser.has(attendance.userId)) {
             attendancesByUser.set(attendance.userId, [])
           }
-          attendancesByUser.get(attendance.userId).push(attendance)
+          attendancesByUser.get(attendance.userId)?.push(attendance)
         })
-        
+
         allExpenses.forEach(expense => {
           if (!expensesByUser.has(expense.userId)) {
             expensesByUser.set(expense.userId, [])
           }
-          expensesByUser.get(expense.userId).push(expense)
+          expensesByUser.get(expense.userId)?.push(expense)
         })
-        
+
         for (const user of users) {
           const userShifts = shifts.filter(s => s.userId === user.id)
           const userAttendances = attendancesByUser.get(user.id) || []
@@ -535,29 +579,29 @@ export async function GET(request: NextRequest) {
           // 単一ユーザー処理と同じロジックを適用
           const dayNames = ['日', '月', '火', '水', '木', '金', '土']
           const lastDayOfMonth = new Date(year, monthNum, 0).getDate()
-          
+
           for (let day = 1; day <= lastDayOfMonth; day++) {
             const date = new Date(year, monthNum - 1, day)
             const dateString = formatJapanDate(date)
             const dayOfWeek = dayNames[date.getDay()]
 
-            const shift = userShifts.find(s => formatJapanDate(s.date) === dateString)
-            const dayAttendances = userAttendances.filter(a => formatJapanDate(a.date) === dateString)
-            
-            const wakeupRecord = dayAttendances.find(a => a.type === 'WAKE_UP')
-            const departureRecord = dayAttendances.find(a => a.type === 'DEPARTURE')
-            const clockInRecord = dayAttendances.find(a => a.type === 'CLOCK_IN')
-            const clockOutRecord = dayAttendances.find(a => a.type === 'CLOCK_OUT')
-            
+            const shift = userShifts.find((s: { date: Date }) => formatJapanDate(s.date) === dateString)
+            const dayAttendances = userAttendances.filter((a: { date: Date; type: string; userId: string }) => formatJapanDate(a.date) === dateString)
+
+            const wakeupRecord = dayAttendances.find((a: { type: string }) => a.type === 'WAKE_UP')
+            const departureRecord = dayAttendances.find((a: { type: string }) => a.type === 'DEPARTURE')
+            const clockInRecord = dayAttendances.find((a: { type: string }) => a.type === 'CLOCK_IN')
+            const clockOutRecord = dayAttendances.find((a: { type: string }) => a.type === 'CLOCK_OUT')
+
             const dayExpenses = userExpenses
-              .filter(e => formatJapanDate(e.date) === dateString)
-              .reduce((sum, e) => sum + e.amount, 0)
+              .filter((e: { date: Date; amount: number }) => formatJapanDate(e.date) === dateString)
+              .reduce((sum: number, e: { amount: number }) => sum + e.amount, 0)
 
             let status = '公休'
             let workplace = '-'
             let startTime = ''
             let endTime = ''
-            let alerts: string[] = []
+            const alerts: string[] = []
 
             if (shift && status !== '欠勤') {
               status = '出勤'
@@ -586,8 +630,8 @@ export async function GET(request: NextRequest) {
               }
             }
 
-            const record: any = {
-              date: `${year}/${monthNum}/${day}`,
+            const record: AttendanceRecord = {
+              date: `${year} /${monthNum}/${day} `,
               dayOfWeek,
               status,
               workplace,
@@ -599,8 +643,8 @@ export async function GET(request: NextRequest) {
               const breakMinutes = shift.breakTime || 0
               const breakHours = Math.floor(breakMinutes / 60)
               const remainingMinutes = breakMinutes % 60
-              record.breakTime = `${breakHours}:${remainingMinutes.toString().padStart(2, '0')}`
-              
+              record.breakTime = `${breakHours}:${remainingMinutes.toString().padStart(2, '0')} `
+
               // 実働時間（提出用は予定時間ベースで計算）
               if (type === 'submission' || type === 'submission_with_expenses') {
                 // シフトの開始時間と終了時間から計算
@@ -610,7 +654,7 @@ export async function GET(request: NextRequest) {
                 const plannedWorkMinutes = totalShiftMinutes - breakMinutes
                 const hours = Math.floor(plannedWorkMinutes / 60)
                 const minutes = Math.floor(plannedWorkMinutes % 60)
-                record.actualWorkHours = `${hours}:${minutes.toString().padStart(2, '0')}`
+                record.actualWorkHours = `${hours}:${minutes.toString().padStart(2, '0')} `
               } else {
                 // 全情報表示版は実際の打刻時間ベースで計算
                 if (clockOutRecord && clockInRecord) {
@@ -618,7 +662,7 @@ export async function GET(request: NextRequest) {
                   const actualWorkMinutes = totalMinutes - breakMinutes
                   const hours = Math.floor(actualWorkMinutes / 60)
                   const minutes = Math.floor(actualWorkMinutes % 60)
-                  record.actualWorkHours = `${hours}:${minutes.toString().padStart(2, '0')}`
+                  record.actualWorkHours = `${hours}:${minutes.toString().padStart(2, '0')} `
                 } else {
                   record.actualWorkHours = '-'
                 }
@@ -629,23 +673,23 @@ export async function GET(request: NextRequest) {
             }
 
             if (type === 'full' || type === 'submission_with_expenses') {
-              record.expenses = dayExpenses
-              
+              record.expenses = dayExpenses.toString().toString()
+
               if (type === 'full') {
-                record.wakeupReport = wakeupRecord ? new Date(wakeupRecord.clockTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }) : null
-                record.departureReport = departureRecord ? new Date(departureRecord.clockTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }) : null
-                record.clockIn = clockInRecord ? new Date(clockInRecord.clockTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' }) : null
-                record.clockOut = clockOutRecord ? new Date(clockOutRecord.clockTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' }) : null
+                record.wakeupReport = wakeupRecord ? new Date(wakeupRecord.clockTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }) : undefined
+                record.departureReport = departureRecord ? new Date(departureRecord.clockTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }) : undefined
+                record.clockIn = clockInRecord ? new Date(clockInRecord.clockTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' }) : undefined
+                record.clockOut = clockOutRecord ? new Date(clockOutRecord.clockTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' }) : undefined
                 if (clockOutRecord && clockInRecord && shift) {
                   const totalMinutes = (new Date(clockOutRecord.clockTime).getTime() - new Date(clockInRecord.clockTime).getTime()) / (1000 * 60)
                   const actualWorkMinutes = totalMinutes - (shift.breakTime || 0)
                   const hours = Math.floor(actualWorkMinutes / 60)
                   const minutes = Math.floor(actualWorkMinutes % 60)
-                  record.workHours = `${hours}:${minutes.toString().padStart(2, '0')}`
+                  record.workHours = `${hours}:${minutes.toString().padStart(2, '0')} `
                 } else {
-                  record.workHours = null
+                  record.workHours = undefined
                 }
-                record.alerts = alerts
+                record.alerts = alerts.join(", ")
               }
             }
 
@@ -675,7 +719,7 @@ export async function GET(request: NextRequest) {
                 record.endTime,
                 record.breakTime || '-',
                 record.actualWorkHours || '-',
-                record.expenses ? `¥${record.expenses.toLocaleString()}` : '-'
+                record.expenses ? `¥${record.expenses.toLocaleString()} ` : '-'
               ])
             } else {
               csvData.push([
@@ -692,17 +736,17 @@ export async function GET(request: NextRequest) {
                 record.clockIn || '-',
                 record.clockOut || '-',
                 record.workHours || '-',
-                record.alerts?.join(', ') || '-',
-                record.expenses ? `¥${record.expenses.toLocaleString()}` : '-'
+                record.alerts || '-',
+                record.expenses ? `¥${record.expenses.toLocaleString()} ` : '-'
               ])
             }
           }
         }
-        
-        const csvContent = csvData.map(row => 
+
+        const csvContent = csvData.map(row =>
           row.map(field => `"${String(field).replace(/"/g, '""')}"`).join(',')
         ).join('\n')
-        
+
         const bom = '\uFEFF'
         const csvBuffer = Buffer.from(bom + csvContent, 'utf8')
         // ファイル名を選択範囲に応じて決定
@@ -726,7 +770,7 @@ export async function GET(request: NextRequest) {
         } else {
           fileName = `勤務管理表_複数ユーザー_${type}_${month}.csv`
         }
-        
+
         return new NextResponse(csvBuffer, {
           headers: {
             'Content-Type': 'text/csv; charset=utf-8',
@@ -734,15 +778,15 @@ export async function GET(request: NextRequest) {
           }
         })
       }
-      
+
       // 複数ユーザーのPDF出力
       if (format === 'pdf') {
         try {
           const puppeteer = await import('puppeteer')
-          
+
           // 全ユーザーの勤怠・経費データを一括取得（N+1問題を回避）
           const allUserIds = users.map(u => u.id)
-          
+
           const [allAttendances, allExpenses] = await Promise.all([
             prisma.attendance.findMany({
               where: {
@@ -770,27 +814,27 @@ export async function GET(request: NextRequest) {
               }
             })
           ])
-          
+
           // ユーザーIDごとにデータをグループ化
           const attendancesByUser = new Map()
           const expensesByUser = new Map()
-          
+
           allAttendances.forEach(attendance => {
             if (!attendancesByUser.has(attendance.userId)) {
               attendancesByUser.set(attendance.userId, [])
             }
-            attendancesByUser.get(attendance.userId).push(attendance)
+            attendancesByUser.get(attendance.userId)?.push(attendance)
           })
-          
+
           allExpenses.forEach(expense => {
             if (!expensesByUser.has(expense.userId)) {
               expensesByUser.set(expense.userId, [])
             }
-            expensesByUser.get(expense.userId).push(expense)
+            expensesByUser.get(expense.userId)?.push(expense)
           })
-          
+
           let combinedHtmlContent = ''
-          
+
           // 各ユーザーのPDFページを生成
           for (let userIndex = 0; userIndex < users.length; userIndex++) {
             const user = users[userIndex]
@@ -806,29 +850,29 @@ export async function GET(request: NextRequest) {
             let lateCount = 0
             const lastDayOfMonth = new Date(year, monthNum, 0).getDate()
             const records = []
-            
+
             for (let day = 1; day <= lastDayOfMonth; day++) {
               const date = new Date(year, monthNum - 1, day)
               const dateString = formatJapanDate(date)
               const dayOfWeek = dayNames[date.getDay()]
 
-              const shift = userShifts.find(s => formatJapanDate(s.date) === dateString)
-              const dayAttendances = userAttendances.filter(a => formatJapanDate(a.date) === dateString)
-              
-              const wakeupRecord = dayAttendances.find(a => a.type === 'WAKE_UP')
-              const departureRecord = dayAttendances.find(a => a.type === 'DEPARTURE')
-              const clockInRecord = dayAttendances.find(a => a.type === 'CLOCK_IN')
-              const clockOutRecord = dayAttendances.find(a => a.type === 'CLOCK_OUT')
-              
+              const shift = userShifts.find((s: { date: Date }) => formatJapanDate(s.date) === dateString)
+              const dayAttendances = userAttendances.filter((a: { date: Date; type: string; userId: string }) => formatJapanDate(a.date) === dateString)
+
+              const wakeupRecord = dayAttendances.find((a: { type: string }) => a.type === 'WAKE_UP')
+              const departureRecord = dayAttendances.find((a: { type: string }) => a.type === 'DEPARTURE')
+              const clockInRecord = dayAttendances.find((a: { type: string }) => a.type === 'CLOCK_IN')
+              const clockOutRecord = dayAttendances.find((a: { type: string }) => a.type === 'CLOCK_OUT')
+
               const dayExpenses = userExpenses
-                .filter(e => formatJapanDate(e.date) === dateString)
-                .reduce((sum, e) => sum + e.amount, 0)
+                .filter((e: { date: Date; amount: number }) => formatJapanDate(e.date) === dateString)
+                .reduce((sum: number, e: { amount: number }) => sum + e.amount, 0)
 
               let status = '公休'
               let workplace = '-'
               let startTime = ''
               let endTime = ''
-              let alerts: string[] = []
+              const alerts: string[] = []
 
               if (shift && status !== '欠勤') {
                 status = '出勤'
@@ -878,7 +922,7 @@ export async function GET(request: NextRequest) {
                 }
               }
 
-              const record: any = {
+              const record: AttendanceRecord = {
                 date: `${year}/${monthNum}/${day}`,
                 dayOfWeek,
                 status,
@@ -892,7 +936,7 @@ export async function GET(request: NextRequest) {
                 const breakHours = Math.floor(breakMinutes / 60)
                 const remainingMinutes = breakMinutes % 60
                 record.breakTime = `${breakHours}:${remainingMinutes.toString().padStart(2, '0')}`
-                
+
                 // 実働時間（提出用は予定時間ベースで計算）
                 if (type === 'submission' || type === 'submission_with_expenses') {
                   // シフトの開始時間と終了時間から計算
@@ -921,13 +965,13 @@ export async function GET(request: NextRequest) {
               }
 
               if (type === 'full' || type === 'submission_with_expenses') {
-                record.expenses = dayExpenses
-                
+                record.expenses = dayExpenses.toString().toString()
+
                 if (type === 'full') {
-                  record.wakeupReport = wakeupRecord ? new Date(wakeupRecord.clockTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }) : null
-                  record.departureReport = departureRecord ? new Date(departureRecord.clockTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }) : null
-                  record.clockIn = clockInRecord ? new Date(clockInRecord.clockTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' }) : null
-                  record.clockOut = clockOutRecord ? new Date(clockOutRecord.clockTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' }) : null
+                  record.wakeupReport = wakeupRecord ? new Date(wakeupRecord.clockTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }) : undefined
+                  record.departureReport = departureRecord ? new Date(departureRecord.clockTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }) : undefined
+                  record.clockIn = clockInRecord ? new Date(clockInRecord.clockTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' }) : undefined
+                  record.clockOut = clockOutRecord ? new Date(clockOutRecord.clockTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' }) : undefined
                   if (clockOutRecord && clockInRecord && shift) {
                     const totalMinutes = (new Date(clockOutRecord.clockTime).getTime() - new Date(clockInRecord.clockTime).getTime()) / (1000 * 60)
                     const actualWorkMinutes = totalMinutes - (shift.breakTime || 0)
@@ -935,28 +979,28 @@ export async function GET(request: NextRequest) {
                     const minutes = Math.floor(actualWorkMinutes % 60)
                     record.workHours = `${hours}:${minutes.toString().padStart(2, '0')}`
                   } else {
-                    record.workHours = null
+                    record.workHours = undefined
                   }
-                  record.alerts = alerts
+                  record.alerts = alerts.join(", ")
                 }
               }
 
               records.push(record)
             }
 
-            const totalExpenses = userExpenses.reduce((sum, e) => sum + e.amount, 0)
+            const totalExpenses = userExpenses.reduce((sum: number, e: { amount: number }) => sum + e.amount, 0)
             const totalMinutes = Math.floor(totalHours * 60)
             const totalHoursFormatted = `${Math.floor(totalMinutes / 60)}:${(totalMinutes % 60).toString().padStart(2, '0')}`
 
             // HTMLコンテンツを生成
-            const headers = type === 'submission' 
+            const headers = type === 'submission'
               ? ['日付', '曜日', '勤怠', '勤務地', '開始時間', '終了時間', '休憩時間', '実働時間']
               : type === 'submission_with_expenses'
-              ? ['日付', '曜日', '勤怠', '勤務地', '開始時間', '終了時間', '休憩時間', '実働時間', '交通費']
-              : ['日付', '曜日', '勤怠', '勤務地', '開始時間', '終了時間', '起床報告', '出発報告', '出勤', '退勤', '勤務時間', 'アラート', '経費合計']
-            
+                ? ['日付', '曜日', '勤怠', '勤務地', '開始時間', '終了時間', '休憩時間', '実働時間', '交通費']
+                : ['日付', '曜日', '勤怠', '勤務地', '開始時間', '終了時間', '起床報告', '出発報告', '出勤', '退勤', '勤務時間', 'アラート', '経費合計']
+
             const pageBreak = userIndex > 0 ? 'page-break-before: always;' : ''
-            
+
             combinedHtmlContent += `
               <div style="${pageBreak}">
                 <h1>勤務管理表${type === 'full' ? '（全情報表示版）' : type === 'submission_with_expenses' ? '（提出用・交通費含む）' : '（提出用）'}</h1>
@@ -966,12 +1010,12 @@ export async function GET(request: NextRequest) {
                   <div>対象年月: ${month}</div>
                 </div>
                 <div class="summary">
-                  ${type === 'submission' 
-                    ? `稼働日数: ${workDays}日　|　実働時間: ${totalHoursFormatted}　|　欠勤: ${absences}日`
-                    : type === 'submission_with_expenses'
-                    ? `稼働日数: ${workDays}日　|　実働時間: ${totalHoursFormatted}　|　欠勤: ${absences}日　|　交通費: ¥${totalExpenses.toLocaleString()}`
-                    : `稼働日数: ${workDays}日　|　実働時間: ${totalHoursFormatted}　|　欠勤: ${absences}日　|　遅刻: ${lateCount}回　|　経費: ¥${totalExpenses.toLocaleString()}`
-                  }
+                  ${type === 'submission'
+                ? `稼働日数: ${workDays}日　|　実働時間: ${totalHoursFormatted}　|　欠勤: ${absences}日`
+                : type === 'submission_with_expenses'
+                  ? `稼働日数: ${workDays}日　|　実働時間: ${totalHoursFormatted}　|　欠勤: ${absences}日　|　交通費: ¥${totalExpenses.toLocaleString()}`
+                  : `稼働日数: ${workDays}日　|　実働時間: ${totalHoursFormatted}　|　欠勤: ${absences}日　|　遅刻: ${lateCount}回　|　経費: ¥${totalExpenses.toLocaleString()}`
+              }
                 </div>
                 <table>
                   <thead>
@@ -981,22 +1025,22 @@ export async function GET(request: NextRequest) {
                   </thead>
                   <tbody>
             `
-            
+
             records.forEach(record => {
               const statusClass = record.status === '欠勤' ? 'absent' : record.status === '出勤' ? 'work' : 'off'
-              const rowData = type === 'submission' 
+              const rowData = type === 'submission'
                 ? [
-                    record.date,
-                    record.dayOfWeek,
-                    record.status,
-                    record.workplace,
-                    record.startTime,
-                    record.endTime,
-                    record.breakTime || '-',
-                    record.actualWorkHours || '-'
-                  ]
+                  record.date,
+                  record.dayOfWeek,
+                  record.status,
+                  record.workplace,
+                  record.startTime,
+                  record.endTime,
+                  record.breakTime || '-',
+                  record.actualWorkHours || '-'
+                ]
                 : type === 'submission_with_expenses'
-                ? [
+                  ? [
                     record.date,
                     record.dayOfWeek,
                     record.status,
@@ -1007,7 +1051,7 @@ export async function GET(request: NextRequest) {
                     record.actualWorkHours || '-',
                     record.expenses ? `¥${record.expenses.toLocaleString()}` : '-'
                   ]
-                : [
+                  : [
                     record.date,
                     record.dayOfWeek,
                     record.status,
@@ -1019,13 +1063,13 @@ export async function GET(request: NextRequest) {
                     record.clockIn || '-',
                     record.clockOut || '-',
                     record.workHours || '-',
-                    (record.alerts || []).join(', ') || '-',
+                    record.alerts || '-',
                     record.expenses ? `¥${record.expenses.toLocaleString()}` : '-'
                   ]
-              
+
               combinedHtmlContent += `<tr class="${statusClass}">` + rowData.map(data => `<td>${data}</td>`).join('') + '</tr>'
             })
-            
+
             combinedHtmlContent += `
                   </tbody>
                 </table>
@@ -1131,10 +1175,10 @@ export async function GET(request: NextRequest) {
             headless: true,
             args: ['--no-sandbox', '--disable-setuid-sandbox']
           })
-          
+
           const page = await browser.newPage()
           await page.setContent(fullHtmlContent, { waitUntil: 'networkidle0' })
-          
+
           const pdfBuffer = await page.pdf({
             format: 'A4',
             landscape: orientation === 'landscape',
@@ -1151,9 +1195,9 @@ export async function GET(request: NextRequest) {
               right: '15mm'
             }
           })
-          
+
           await browser.close()
-          
+
           // ファイル名を選択範囲に応じて決定
           let fileName = ''
           if (scope === 'user') {
@@ -1176,24 +1220,24 @@ export async function GET(request: NextRequest) {
           } else {
             fileName = `勤務管理表_複数ユーザー_${type}_${month}.pdf`
           }
-          
-          return new NextResponse(pdfBuffer, {
+
+          return new NextResponse(Buffer.from(pdfBuffer), {
             headers: {
               'Content-Type': 'application/pdf',
               'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`
             }
           })
-          
+
         } catch (pdfError) {
           console.error('Multiple user PDF generation error:', pdfError)
-          return NextResponse.json({ 
+          return NextResponse.json({
             error: 'PDF生成に失敗しました',
             details: pdfError instanceof Error ? pdfError.message : String(pdfError)
           }, { status: 500 })
         }
       }
     }
-    
+
     // 単一ユーザーの場合は既存のロジックを使用
     const user = users[0]
     const userShifts = shifts.filter(s => s.userId === user.id)
@@ -1233,35 +1277,35 @@ export async function GET(request: NextRequest) {
 
     // 対象月の最終日を取得
     const lastDayOfMonth = new Date(year, monthNum, 0).getDate()
-    
+
     for (let day = 1; day <= lastDayOfMonth; day++) {
       const date = new Date(year, monthNum - 1, day)
       const dateString = formatJapanDate(date)
       const dayOfWeek = dayNames[date.getDay()]
 
-      const shift = shifts.find(s => formatJapanDate(s.date) === dateString)
-      
+      const shift = shifts.find((s: { date: Date }) => formatJapanDate(s.date) === dateString)
+
       // その日の全ての勤怠記録を取得（日本時間基準で比較）
-      const dayAttendances = attendances.filter(a => formatJapanDate(a.date) === dateString)
-      
+      const dayAttendances = attendances.filter((a: { date: Date; type: string; userId: string }) => formatJapanDate(a.date) === dateString)
+
       // 各種打刻時刻を取得
-      const wakeupRecord = dayAttendances.find(a => a.type === 'WAKE_UP')
-      const departureRecord = dayAttendances.find(a => a.type === 'DEPARTURE')
-      const clockInRecord = dayAttendances.find(a => a.type === 'CLOCK_IN')
-      const clockOutRecord = dayAttendances.find(a => a.type === 'CLOCK_OUT')
-      
+      const wakeupRecord = dayAttendances.find((a: { type: string }) => a.type === 'WAKE_UP')
+      const departureRecord = dayAttendances.find((a: { type: string }) => a.type === 'DEPARTURE')
+      const clockInRecord = dayAttendances.find((a: { type: string }) => a.type === 'CLOCK_IN')
+      const clockOutRecord = dayAttendances.find((a: { type: string }) => a.type === 'CLOCK_OUT')
+
       const dayExpenses = expenses
-        .filter(e => formatJapanDate(e.date) === dateString)
-        .reduce((sum, e) => sum + e.amount, 0)
-      
+        .filter((e: { date: Date; amount: number }) => formatJapanDate(e.date) === dateString)
+        .reduce((sum: number, e: { amount: number }) => sum + e.amount, 0)
+
       // デバッグログ（経費データを常に出力）
-      console.log(`日付: ${dateString}, 経費: ¥${dayExpenses}, 経費件数: ${expenses.filter(e => formatJapanDate(e.date) === dateString).length}`)
+      console.log(`日付: ${dateString}, 経費: ¥${dayExpenses}, 経費件数: ${expenses.filter((e: { date: Date; amount: number }) => formatJapanDate(e.date) === dateString).length}`)
 
       let status = '公休'
       let workplace = '-'
       let startTime = ''
       let endTime = ''
-      let alerts: string[] = []
+      const alerts: string[] = []
 
       if (shift) {
         // シフトがある場合は基本的に出勤
@@ -1299,7 +1343,7 @@ export async function GET(request: NextRequest) {
               const breakMinutes = shift.breakTime || 0
               const actualWorkMinutes = totalMinutes - breakMinutes
               const workHours = actualWorkMinutes / 60
-              
+
               totalHours += workHours
             }
           }
@@ -1307,7 +1351,7 @@ export async function GET(request: NextRequest) {
           // 出勤記録がない場合の欠勤判定
           const now = new Date()
           const shiftEndTime = new Date(shift.endTime)
-          
+
           // 当日かつ退勤時刻を過ぎている場合は欠勤
           if (formatJapanDate(now) === dateString && now > shiftEndTime) {
             status = '欠勤'
@@ -1334,7 +1378,7 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      const record: any = {
+      const record: AttendanceRecord = {
         date: `${year}/${monthNum}/${day}`,
         dayOfWeek,
         status,
@@ -1350,7 +1394,7 @@ export async function GET(request: NextRequest) {
         const breakHours = Math.floor(breakMinutes / 60)
         const remainingMinutes = breakMinutes % 60
         record.breakTime = `${breakHours}:${remainingMinutes.toString().padStart(2, '0')}`
-        
+
         // 実働時間（提出用は予定時間ベースで計算）
         if (type === 'submission' || type === 'submission_with_expenses') {
           // シフトの開始時間と終了時間から計算
@@ -1380,17 +1424,17 @@ export async function GET(request: NextRequest) {
 
       if (type === 'full' || type === 'submission_with_expenses') {
         // 経費データは常に追加（提出用で交通費含む場合も必要）
-        record.expenses = dayExpenses
-        
+        record.expenses = dayExpenses.toString()
+
         if (type === 'full') {
-          record.wakeupReport = wakeupRecord ? 
-            new Date(wakeupRecord.clockTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }) : null
+          record.wakeupReport = wakeupRecord ?
+            new Date(wakeupRecord.clockTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }) : undefined
           record.departureReport = departureRecord ?
-            new Date(departureRecord.clockTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }) : null
+            new Date(departureRecord.clockTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }) : undefined
           record.clockIn = clockInRecord ?
-            new Date(clockInRecord.clockTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' }) : null
+            new Date(clockInRecord.clockTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' }) : undefined
           record.clockOut = clockOutRecord ?
-            new Date(clockOutRecord.clockTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' }) : null
+            new Date(clockOutRecord.clockTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' }) : undefined
           if (clockOutRecord && clockInRecord && shift) {
             const totalMinutes = (new Date(clockOutRecord.clockTime).getTime() - new Date(clockInRecord.clockTime).getTime()) / (1000 * 60)
             const actualWorkMinutes = totalMinutes - (shift.breakTime || 0)
@@ -1398,16 +1442,16 @@ export async function GET(request: NextRequest) {
             const minutes = Math.floor(actualWorkMinutes % 60)
             record.workHours = `${hours}:${minutes.toString().padStart(2, '0')}`
           } else {
-            record.workHours = null
+            record.workHours = undefined
           }
-          record.alerts = alerts
+          record.alerts = alerts.join(", ")
         }
       }
 
       records.push(record)
     }
 
-    const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0)
+    const totalExpenses = expenses.reduce((sum: number, e: { amount: number }) => sum + e.amount, 0)
 
     // 合計時間を時間:分形式に変換
     const totalMinutes = Math.floor(totalHours * 60)
@@ -1433,15 +1477,15 @@ export async function GET(request: NextRequest) {
     // Excel出力
     if (format === 'excel') {
       const workbook = XLSX.utils.book_new()
-      
+
       // データを準備
       const worksheetData = [
         // ヘッダー行
-        ...(type === 'submission' 
+        ...(type === 'submission'
           ? [['日付', '曜日', '勤怠', '勤務地', '開始時間', '終了時間', '休憩時間', '実働時間']]
           : type === 'submission_with_expenses'
-          ? [['日付', '曜日', '勤怠', '勤務地', '開始時間', '終了時間', '休憩時間', '実働時間', '交通費']]
-          : [['日付', '曜日', '勤怠', '勤務地', '開始時間', '終了時間', '起床報告', '出発報告', '出勤', '退勤', '勤務時間', 'アラート', '経費合計']]
+            ? [['日付', '曜日', '勤怠', '勤務地', '開始時間', '終了時間', '休憩時間', '実働時間', '交通費']]
+            : [['日付', '曜日', '勤怠', '勤務地', '開始時間', '終了時間', '起床報告', '出発報告', '出勤', '退勤', '勤務時間', 'アラート', '経費合計']]
         ),
         // データ行
         ...records.map(record => {
@@ -1481,22 +1525,22 @@ export async function GET(request: NextRequest) {
               record.clockIn || '-',
               record.clockOut || '-',
               record.workHours || '-',
-              record.alerts?.join(', ') || '-',
+              record.alerts || '-',
               record.expenses ? `¥${record.expenses.toLocaleString()}` : '-'
             ]
           }
         })
       ]
-      
+
       // ワークシートを作成
       const worksheet = XLSX.utils.aoa_to_sheet(worksheetData)
       XLSX.utils.book_append_sheet(workbook, worksheet, '勤務管理表')
-      
+
       // Excelファイルを生成
       const excelBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' })
-      
+
       const fileName = `勤務管理表_${user.name}(${user.userId || user.id})_${month}.xlsx`
-      
+
       return new NextResponse(excelBuffer, {
         headers: {
           'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -1508,7 +1552,7 @@ export async function GET(request: NextRequest) {
     // CSV出力
     if (format === 'csv') {
       let csvContent = ''
-      
+
       // ヘッダー行
       if (type === 'submission') {
         csvContent += '日付,曜日,勤怠,勤務地,開始時間,終了時間,休憩時間,実働時間\n'
@@ -1517,7 +1561,7 @@ export async function GET(request: NextRequest) {
       } else {
         csvContent += '日付,曜日,勤怠,勤務地,開始時間,終了時間,起床報告,出発報告,出勤,退勤,勤務時間,アラート,経費合計\n'
       }
-      
+
       // データ行
       records.forEach(record => {
         if (type === 'submission') {
@@ -1558,15 +1602,15 @@ export async function GET(request: NextRequest) {
             record.clockIn || '-',
             record.clockOut || '-',
             record.workHours || '-',
-            record.alerts?.join(', ') || '-',
+            record.alerts || '-',
             record.expenses ? `¥${record.expenses.toLocaleString()}` : '-'
           ]
           csvContent += row.map(field => `"${field}"`).join(',') + '\n'
         }
       })
-      
+
       const fileName = `勤務管理表_${user.name}(${user.userId || user.id})_${month}.csv`
-      
+
       return new NextResponse(csvContent, {
         headers: {
           'Content-Type': 'text/csv; charset=utf-8',
@@ -1579,14 +1623,14 @@ export async function GET(request: NextRequest) {
     if (format === 'pdf') {
       try {
         const puppeteer = await import('puppeteer')
-        
+
         // HTMLコンテンツを生成
-        const headers = type === 'submission' 
+        const headers = type === 'submission'
           ? ['日付', '曜日', '勤怠', '勤務地', '開始時間', '終了時間', '休憩時間', '実働時間']
           : type === 'submission_with_expenses'
-          ? ['日付', '曜日', '勤怠', '勤務地', '開始時間', '終了時間', '休憩時間', '実働時間', '交通費']
-          : ['日付', '曜日', '勤怠', '勤務地', '開始時間', '終了時間', '起床報告', '出発報告', '出勤', '退勤', '勤務時間', 'アラート', '経費合計']
-        
+            ? ['日付', '曜日', '勤怠', '勤務地', '開始時間', '終了時間', '休憩時間', '実働時間', '交通費']
+            : ['日付', '曜日', '勤怠', '勤務地', '開始時間', '終了時間', '起床報告', '出発報告', '出勤', '退勤', '勤務時間', 'アラート', '経費合計']
+
         let htmlContent = `
           <!DOCTYPE html>
           <html>
@@ -1667,12 +1711,12 @@ export async function GET(request: NextRequest) {
               <div>対象年月: ${month}</div>
             </div>
             <div class="summary">
-              ${type === 'submission' 
-                ? `稼働日数: ${workDays}日　|　実働時間: ${totalHoursFormatted}　|　欠勤: ${absences}日`
-                : type === 'submission_with_expenses'
-                ? `稼働日数: ${workDays}日　|　実働時間: ${totalHoursFormatted}　|　欠勤: ${absences}日　|　交通費: ¥${totalExpenses.toLocaleString()}`
-                : `稼働日数: ${workDays}日　|　実働時間: ${totalHoursFormatted}　|　欠勤: ${absences}日　|　遅刻: ${lateCount}回　|　経費: ¥${totalExpenses.toLocaleString()}`
-              }
+              ${type === 'submission'
+            ? `稼働日数: ${workDays}日　|　実働時間: ${totalHoursFormatted}　|　欠勤: ${absences}日`
+            : type === 'submission_with_expenses'
+              ? `稼働日数: ${workDays}日　|　実働時間: ${totalHoursFormatted}　|　欠勤: ${absences}日　|　交通費: ¥${totalExpenses.toLocaleString()}`
+              : `稼働日数: ${workDays}日　|　実働時間: ${totalHoursFormatted}　|　欠勤: ${absences}日　|　遅刻: ${lateCount}回　|　経費: ¥${totalExpenses.toLocaleString()}`
+          }
             </div>
             <table>
               <thead>
@@ -1682,22 +1726,22 @@ export async function GET(request: NextRequest) {
               </thead>
               <tbody>
         `
-        
+
         records.forEach(record => {
           const statusClass = record.status === '欠勤' ? 'absent' : record.status === '出勤' ? 'work' : 'off'
-          const rowData = type === 'submission' 
+          const rowData = type === 'submission'
             ? [
-                record.date,
-                record.dayOfWeek,
-                record.status,
-                record.workplace,
-                record.startTime,
-                record.endTime,
-                record.breakTime || '-',
-                record.actualWorkHours || '-'
-              ]
+              record.date,
+              record.dayOfWeek,
+              record.status,
+              record.workplace,
+              record.startTime,
+              record.endTime,
+              record.breakTime || '-',
+              record.actualWorkHours || '-'
+            ]
             : type === 'submission_with_expenses'
-            ? [
+              ? [
                 record.date,
                 record.dayOfWeek,
                 record.status,
@@ -1708,7 +1752,7 @@ export async function GET(request: NextRequest) {
                 record.actualWorkHours || '-',
                 record.expenses ? `¥${record.expenses.toLocaleString()}` : '-'
               ]
-            : [
+              : [
                 record.date,
                 record.dayOfWeek,
                 record.status,
@@ -1720,13 +1764,13 @@ export async function GET(request: NextRequest) {
                 record.clockIn || '-',
                 record.clockOut || '-',
                 record.workHours || '-',
-                (record.alerts || []).join(', ') || '-',
+                record.alerts || '-',
                 record.expenses ? `¥${record.expenses.toLocaleString()}` : '-'
               ]
-          
+
           htmlContent += `<tr class="${statusClass}">` + rowData.map(data => `<td>${data}</td>`).join('') + '</tr>'
         })
-        
+
         htmlContent += `
               </tbody>
             </table>
@@ -1735,16 +1779,16 @@ export async function GET(request: NextRequest) {
           </body>
           </html>
         `
-        
+
         // Puppeteerでページを作成
         const browser = await puppeteer.launch({
           headless: true,
           args: ['--no-sandbox', '--disable-setuid-sandbox']
         })
-        
+
         const page = await browser.newPage()
         await page.setContent(htmlContent, { waitUntil: 'networkidle0' })
-        
+
         // PDFを生成
         const pdfBuffer = await page.pdf({
           format: 'A4',
@@ -1762,21 +1806,21 @@ export async function GET(request: NextRequest) {
             right: '15mm'
           }
         })
-        
+
         await browser.close()
-        
+
         const fileName = `勤務管理表_${user.name}(${user.userId || user.id})_${month}.pdf`
-        
-        return new NextResponse(pdfBuffer, {
+
+        return new NextResponse(Buffer.from(pdfBuffer), {
           headers: {
             'Content-Type': 'application/pdf',
             'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`
           }
         })
-        
+
       } catch (pdfError) {
         console.error('PDF generation error:', pdfError)
-        return NextResponse.json({ 
+        return NextResponse.json({
           error: 'PDF生成に失敗しました',
           details: pdfError instanceof Error ? pdfError.message : String(pdfError)
         }, { status: 500 })
@@ -1785,9 +1829,9 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ error: 'サポートされていない形式です' }, { status: 400 })
 
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Attendance report error:', error)
-    return NextResponse.json({ 
+    return NextResponse.json({
       error: 'レポートの生成に失敗しました',
       details: error instanceof Error ? error.message : String(error)
     }, { status: 500 })

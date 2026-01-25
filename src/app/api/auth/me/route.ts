@@ -5,6 +5,12 @@ import jwt from "jsonwebtoken";
 import { JWT_SECRET_STRING } from "@/lib/jwt";
 import { getUserPermissions, getUserPageAccess } from "@/lib/permissions";
 
+interface JWTPayload {
+  userId: string;
+  iat?: number;
+  exp?: number;
+}
+
 export async function GET(request: Request) {
   try {
     // クッキーからトークンを取得
@@ -22,7 +28,7 @@ export async function GET(request: Request) {
     }
 
     // トークンを検証
-    const decoded = jwt.verify(token, JWT_SECRET_STRING) as any;
+    const decoded = jwt.verify(token, JWT_SECRET_STRING) as JWTPayload;
     
     // ユーザー情報を取得
     const user = await prisma.user.findUnique({
@@ -74,7 +80,7 @@ export async function GET(request: Request) {
       permissions: permissions,
       pageAccess: pageAccess,
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("認証エラー:", error);
     return NextResponse.json(
       { error: "認証に失敗しました" },

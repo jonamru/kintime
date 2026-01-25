@@ -26,7 +26,7 @@ interface Worker {
       name: string;
     } | null;
   };
-  attendances: any[];
+  attendances: unknown[];
   attendanceStatus: string;
   clockInTime?: string;
   clockOutTime?: string;
@@ -60,19 +60,19 @@ function ForceClockModal({ worker, selectedDate, onClose, onSuccess }: ForceCloc
   // 利用可能な打刻タイプを取得
   const getAvailableTypes = () => {
     const types = [];
-    
+
     // 固定順序で追加: 起床 → 出発 → 出勤 → 退勤
     if (worker.user.wakeUpEnabled) {
       types.push({ value: 'WAKE_UP', label: '起床' });
     }
-    
+
     if (worker.user.departureEnabled) {
       types.push({ value: 'DEPARTURE', label: '出発' });
     }
-    
+
     types.push({ value: 'CLOCK_IN', label: '出勤' });
     types.push({ value: 'CLOCK_OUT', label: '退勤' });
-    
+
     return types;
   };
 
@@ -82,7 +82,7 @@ function ForceClockModal({ worker, selectedDate, onClose, onSuccess }: ForceCloc
 
     try {
       const [hours, minutes] = clockTime.split(':').map(Number);
-      
+
       // 選択された日付に時刻を設定
       const [year, month, day] = selectedDate.split('-').map(Number);
       const clockDateTime = new Date(year, month - 1, day, hours, minutes, 0, 0);
@@ -113,7 +113,7 @@ function ForceClockModal({ worker, selectedDate, onClose, onSuccess }: ForceCloc
         const error = await response.json();
         showAlert(error.error || '打刻に失敗しました');
       }
-    } catch (error) {
+    } catch {
       showAlert('エラーが発生しました');
     } finally {
       setLoading(false);
@@ -127,7 +127,7 @@ function ForceClockModal({ worker, selectedDate, onClose, onSuccess }: ForceCloc
           <h3 className="text-lg font-medium text-gray-900 mb-4">
             強制打刻
           </h3>
-          
+
           <div className="mb-4">
             <p className="text-sm text-gray-600">
               ユーザー: {worker.user.name}
@@ -147,7 +147,7 @@ function ForceClockModal({ worker, selectedDate, onClose, onSuccess }: ForceCloc
               </label>
               <select
                 value={type}
-                onChange={(e) => setType(e.target.value as any)}
+                onChange={(e) => setType(e.target.value as 'CLOCK_IN' | 'CLOCK_OUT' | 'WAKE_UP' | 'DEPARTURE')}
                 className="w-full border border-gray-300 rounded-md px-3 py-2"
                 required
               >
@@ -213,6 +213,7 @@ export default function WorkersPage() {
     if (user) {
       fetchWorkers();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, selectedDate]);
 
   const fetchWorkers = async () => {
@@ -225,7 +226,7 @@ export default function WorkersPage() {
       } else {
         console.error("出勤者データの取得に失敗しました");
       }
-    } catch (error) {
+    } catch (error: unknown) {
       console.error("出勤者データの取得に失敗しました:", error);
     } finally {
       setLoading(false);
@@ -270,6 +271,17 @@ export default function WorkersPage() {
     setShowForceClockModal(true);
   };
 
+  const changeDate = (days: number) => {
+    const [year, month, day] = selectedDate.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
+    date.setDate(date.getDate() + days);
+
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    setSelectedDate(`${y}-${m}-${d}`);
+  };
+
   const isAdmin = user && isUserAdmin(user);
 
   if (!user) {
@@ -278,7 +290,7 @@ export default function WorkersPage() {
 
   return (
     <PageAccessGuard page="shiftWorkers">
-      <TimeBaseHeader 
+      <TimeBaseHeader
         rightAction={
           <a
             href="/dashboard"
@@ -293,155 +305,177 @@ export default function WorkersPage() {
         }
       />
       <div className="min-h-screen bg-gray-100 py-6">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="bg-white shadow rounded-lg">
-          <div className="px-4 py-5 sm:p-6">
-            <div className="flex justify-between items-center mb-6">
-              <h1 className="text-2xl font-bold text-gray-900">出勤者管理</h1>
-            </div>
-
-            {/* 日付選択 */}
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                日付を選択
-              </label>
-              <input
-                type="date"
-                value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
-                className="border border-gray-300 rounded-md px-3 py-2"
-              />
-            </div>
-
-            {loading ? (
-              <div className="text-center py-8">
-                <div className="text-gray-500">読み込み中...</div>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="bg-white shadow rounded-lg">
+            <div className="px-4 py-5 sm:p-6">
+              <div className="flex justify-between items-center mb-6">
+                <h1 className="text-2xl font-bold text-gray-900">出勤者管理</h1>
               </div>
-            ) : workersData ? (
-              <div>
-                <div className="mb-6 bg-blue-50 border border-blue-200 rounded-md p-4">
-                  <h2 className="text-lg font-medium text-blue-900">
-                    {formatDate(workersData.date)}の出勤状況
-                  </h2>
-                  <p className="text-sm text-blue-700 mt-1">
-                    出勤予定者: {workersData.totalWorkers}名
-                  </p>
-                </div>
 
-                {workersData.workers.length === 0 ? (
-                  <div className="text-center py-8">
-                    <div className="text-gray-500">この日の出勤予定者はいません</div>
+              {/* 日付選択 */}
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  日付を選択
+                </label>
+                <div className="flex items-center space-x-3">
+                  <button
+                    onClick={() => changeDate(-1)}
+                    className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 whitespace-nowrap"
+                  >
+                    <svg className="-ml-1 mr-2 h-5 w-5 text-gray-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                      <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
+                    </svg>
+                    前日
+                  </button>
+                  <div className="relative rounded-md shadow-sm">
+                    <input
+                      type="date"
+                      value={selectedDate}
+                      onChange={(e) => setSelectedDate(e.target.value)}
+                      className="focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md px-4 py-2"
+                    />
                   </div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full bg-white border border-gray-200">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            ユーザー
-                          </th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            シフト時間
-                          </th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            勤務地
-                          </th>
-                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            打刻状況
-                          </th>
-                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            出勤時刻
-                          </th>
-                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            退勤時刻
-                          </th>
-                          {isAdmin && (
-                            <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                              管理者操作
+                  <button
+                    onClick={() => changeDate(1)}
+                    className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 whitespace-nowrap"
+                  >
+                    翌日
+                    <svg className="ml-2 -mr-1 h-5 w-5 text-gray-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                      <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              {loading ? (
+                <div className="text-center py-8">
+                  <div className="text-gray-500">読み込み中...</div>
+                </div>
+              ) : workersData ? (
+                <div>
+                  <div className="mb-6 bg-blue-50 border border-blue-200 rounded-md p-4">
+                    <h2 className="text-lg font-medium text-blue-900">
+                      {formatDate(workersData.date)}の出勤状況
+                    </h2>
+                    <p className="text-sm text-blue-700 mt-1">
+                      出勤予定者: {workersData.totalWorkers}名
+                    </p>
+                  </div>
+
+                  {workersData.workers.length === 0 ? (
+                    <div className="text-center py-8">
+                      <div className="text-gray-500">この日の出勤予定者はいません</div>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full bg-white border border-gray-200">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              ユーザー
                             </th>
-                          )}
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-200">
-                        {workersData.workers.map((worker) => (
-                          <tr key={worker.shift.id} className="hover:bg-gray-50">
-                            <td className="px-4 py-4 whitespace-nowrap">
-                              <div>
-                                <div className="text-sm font-medium text-gray-900">
-                                  {worker.user.name}
-                                </div>
-                                <div className="text-sm text-gray-500">
-                                  {worker.user.userId || worker.user.email}
-                                </div>
-                                {worker.user.partner && (
-                                  <div className="text-xs text-gray-400">
-                                    {worker.user.partner.name}
-                                  </div>
-                                )}
-                              </div>
-                            </td>
-                            <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
-                              {formatTime(worker.shift.startTime)} - {formatTime(worker.shift.endTime)}
-                              <div className="text-xs text-gray-500">
-                                {worker.shift.shiftType === "REGULAR" ? "通常" : "スポット"}
-                              </div>
-                            </td>
-                            <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
-                              {worker.shift.location}
-                            </td>
-                            <td className="px-4 py-4 whitespace-nowrap text-center">
-                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(worker.attendanceStatus)}`}>
-                                {worker.attendanceStatus}
-                              </span>
-                            </td>
-                            <td className="px-4 py-4 whitespace-nowrap text-center text-sm text-gray-900">
-                              {worker.clockInTime ? formatTime(worker.clockInTime) : "-"}
-                            </td>
-                            <td className="px-4 py-4 whitespace-nowrap text-center text-sm text-gray-900">
-                              {worker.clockOutTime ? formatTime(worker.clockOutTime) : "-"}
-                            </td>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              シフト時間
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              勤務地
+                            </th>
+                            <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              打刻状況
+                            </th>
+                            <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              出勤時刻
+                            </th>
+                            <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              退勤時刻
+                            </th>
                             {isAdmin && (
-                              <td className="px-4 py-4 whitespace-nowrap text-center text-sm font-medium">
-                                <div className="flex justify-center space-x-2">
-                                  <button
-                                    onClick={() => handleForceClock(worker)}
-                                    className="text-indigo-600 hover:text-indigo-900 text-xs"
-                                  >
-                                    強制打刻
-                                  </button>
-                                </div>
-                              </td>
+                              <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                管理者操作
+                              </th>
                             )}
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="text-center py-8">
-                <div className="text-gray-500">データを読み込めませんでした</div>
-              </div>
-            )}
+                        </thead>
+                        <tbody className="divide-y divide-gray-200">
+                          {workersData.workers.map((worker) => (
+                            <tr key={worker.shift.id} className="hover:bg-gray-50">
+                              <td className="px-4 py-4 whitespace-nowrap">
+                                <div>
+                                  <div className="text-sm font-medium text-gray-900">
+                                    {worker.user.name}
+                                  </div>
+                                  <div className="text-sm text-gray-500">
+                                    {worker.user.userId || worker.user.email}
+                                  </div>
+                                  {worker.user.partner && (
+                                    <div className="text-xs text-gray-400">
+                                      {worker.user.partner.name}
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
+                                {formatTime(worker.shift.startTime)} - {formatTime(worker.shift.endTime)}
+                                <div className="text-xs text-gray-500">
+                                  {worker.shift.shiftType === "REGULAR" ? "通常" : "スポット"}
+                                </div>
+                              </td>
+                              <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
+                                {worker.shift.location}
+                              </td>
+                              <td className="px-4 py-4 whitespace-nowrap text-center">
+                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(worker.attendanceStatus)}`}>
+                                  {worker.attendanceStatus}
+                                </span>
+                              </td>
+                              <td className="px-4 py-4 whitespace-nowrap text-center text-sm text-gray-900">
+                                {worker.clockInTime ? formatTime(worker.clockInTime) : "-"}
+                              </td>
+                              <td className="px-4 py-4 whitespace-nowrap text-center text-sm text-gray-900">
+                                {worker.clockOutTime ? formatTime(worker.clockOutTime) : "-"}
+                              </td>
+                              {isAdmin && (
+                                <td className="px-4 py-4 whitespace-nowrap text-center text-sm font-medium">
+                                  <div className="flex justify-center space-x-2">
+                                    <button
+                                      onClick={() => handleForceClock(worker)}
+                                      className="text-indigo-600 hover:text-indigo-900 text-xs"
+                                    >
+                                      強制打刻
+                                    </button>
+                                  </div>
+                                </td>
+                              )}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <div className="text-gray-500">データを読み込めませんでした</div>
+                </div>
+              )}
 
-            {/* 強制打刻モーダル */}
-            {showForceClockModal && selectedWorkerForClock && (
-              <ForceClockModal
-                worker={selectedWorkerForClock}
-                selectedDate={selectedDate}
-                onClose={() => {
-                  setShowForceClockModal(false);
-                  setSelectedWorkerForClock(null);
-                }}
-                onSuccess={() => {
-                  fetchWorkers(); // データを再取得
-                }}
-              />
-            )}
+              {/* 強制打刻モーダル */}
+              {showForceClockModal && selectedWorkerForClock && (
+                <ForceClockModal
+                  worker={selectedWorkerForClock}
+                  selectedDate={selectedDate}
+                  onClose={() => {
+                    setShowForceClockModal(false);
+                    setSelectedWorkerForClock(null);
+                  }}
+                  onSuccess={() => {
+                    fetchWorkers(); // データを再取得
+                  }}
+                />
+              )}
+            </div>
           </div>
         </div>
-      </div>
       </div>
     </PageAccessGuard>
   );

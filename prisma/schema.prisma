@@ -22,6 +22,7 @@ model User {
   gpsEnabled             Boolean                 @default(true)
   wakeUpEnabled          Boolean                 @default(false)
   defaultLocation        String?
+  isActive               Boolean                 @default(true)
   customRoleId           String?
   attendances            Attendance[]
   lockedCommutePasses    CommutePass[]           @relation("CommutePassLocker")
@@ -31,6 +32,7 @@ model User {
   shifts                 Shift[]
   shiftRegistrationLocks ShiftRegistrationLock[]
   shiftRequests          ShiftRequest[]
+  expenseRegistrationLocks ExpenseRegistrationLock[]
   customRole             CustomRole?             @relation(fields: [customRoleId], references: [id])
   managers               User[]                  @relation("UserManagers")
   managedUsers           User[]                  @relation("UserManagers")
@@ -39,6 +41,22 @@ model User {
   @@index([partnerId])
   @@index([customRoleId])
   @@index([partnerId, customRoleId])
+}
+
+model ExpenseRegistrationLock {
+  id         String    @id @default(cuid())
+  userId     String
+  year       Int
+  month      Int
+  isUnlocked Boolean   @default(false)
+  unlockedBy String?
+  unlockedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  user       User      @relation(fields: [userId], references: [id])
+
+  @@unique([userId, year, month])
+  @@index([userId])
 }
 
 model Partner {

@@ -2,11 +2,18 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { getJapanTodayString, getJapanDayRange } from "@/lib/dateUtils";
+import type { Shift, ApiResponse } from "@/types/common";
 
-export async function GET(request: Request) {
+interface ShiftResponse extends ApiResponse {
+  hasShift: boolean;
+  shift: Partial<Shift> | null;
+  date: string;
+}
+
+export async function GET(request: Request): Promise<NextResponse<ShiftResponse | ApiResponse>> {
   try {
-    const currentUser = await getCurrentUser(request as any);
-    
+    const currentUser = await getCurrentUser(request);
+
     if (!currentUser) {
       return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
     }
@@ -37,13 +44,13 @@ export async function GET(request: Request) {
     });
 
     console.log("ダッシュボード - 見つかったシフト:", todayShift);
-    
+
     return NextResponse.json({
       hasShift: !!todayShift,
       shift: todayShift,
       date: todayString,
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("今日のシフト取得エラー:", error);
     return NextResponse.json(
       { error: "今日のシフト情報の取得に失敗しました" },

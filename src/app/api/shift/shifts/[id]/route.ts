@@ -24,7 +24,7 @@ async function shouldAutoApprove(shiftDate: Date): Promise<boolean> {
     const now = new Date();
     
     return now <= deadline;
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("期限チェックエラー:", error);
     // エラー時は安全側に倒して承認必要とする
     return false;
@@ -41,7 +41,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     console.log("breakTime の値:", breakTime, "型:", typeof breakTime);
 
     // 認証
-    const currentUser = await getCurrentUser(request as any);
+    const currentUser = await getCurrentUser(request);
     
     if (!currentUser) {
       return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
@@ -131,7 +131,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     console.log("データベース再取得での breakTime:", verifyShift?.breakTime);
 
     return NextResponse.json(updatedShift);
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("シフト更新エラー:", error);
     return NextResponse.json(
       { error: "シフトの更新に失敗しました" },
@@ -145,7 +145,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     const { id } = await params;
 
     // 認証
-    const currentUser = await getCurrentUser(request as any);
+    const currentUser = await getCurrentUser(request);
     
     if (!currentUser) {
       return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
@@ -206,7 +206,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     });
 
     return NextResponse.json({ message: "シフトを削除しました" });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("シフト削除エラー:", error);
     return NextResponse.json(
       { error: "シフトの削除に失敗しました" },

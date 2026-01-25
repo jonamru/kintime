@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
+import { Prisma } from "@prisma/client";
 
 export async function POST(request: Request) {
   try {
@@ -23,7 +24,7 @@ export async function POST(request: Request) {
     const roles = await prisma.customRole.findMany();
 
     for (const role of roles) {
-      let pageAccess = role.pageAccess as any || {};
+      const pageAccess = (role.pageAccess as Record<string, unknown>) || {};
       
       // 管理者系ロールに一括修正権限を追加
       if (['SUPER_ADMIN', 'MANAGER'].includes(role.name)) {
@@ -37,7 +38,7 @@ export async function POST(request: Request) {
       await prisma.customRole.update({
         where: { id: role.id },
         data: { 
-          pageAccess: pageAccess as any
+          pageAccess: pageAccess as Prisma.InputJsonValue
         }
       });
     }
@@ -48,7 +49,7 @@ export async function POST(request: Request) {
       updatedRoles: roles.length 
     });
 
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("権限更新エラー:", error);
     return NextResponse.json(
       { error: "権限の更新に失敗しました" },

@@ -164,7 +164,7 @@ export async function POST(request: Request) {
         });
 
         results.success++;
-      } catch (error) {
+      } catch (error: unknown) {
         results.errors.push(`行${lineNumber}: 処理エラー - ${error}`);
       }
     }
@@ -176,7 +176,7 @@ export async function POST(request: Request) {
       skipped: results.skipped,
     });
 
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("CSV一括登録エラー:", error);
     return NextResponse.json(
       { error: "CSV一括登録に失敗しました" },

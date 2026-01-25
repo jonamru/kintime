@@ -2,6 +2,12 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions";
+import { AttendanceType } from "@prisma/client";
+
+// AttendanceType の型ガード関数
+const isAttendanceType = (value: string): value is AttendanceType => {
+  return Object.values(AttendanceType).includes(value as AttendanceType);
+};
 
 export async function POST(request: Request) {
   try {
@@ -49,7 +55,8 @@ export async function POST(request: Request) {
         }
       }
       processedValue = new Date(originalDate.getFullYear(), originalDate.getMonth(), originalDate.getDate(), hours, minutes);
-    } else if ((field === 'clockIn' || field === 'clockOut' || field === 'wakeUp' || field === 'departure') && typeof value === 'string') {
+    } else if (type === 'attendance' && (field === 'clockIn' || field === 'clockOut' || field === 'wakeUp' || field === 'departure') && typeof value === 'string') {
+      // 勤怠関連の時間フィールド処理
       const [hours, minutes] = value.split(':').map(Number);
       // 仮想レコードIDから日付を取得
       let targetDate = new Date();
@@ -70,52 +77,57 @@ export async function POST(request: Request) {
         if (field === 'clockIn' || field === 'clockOut' || field === 'wakeUp' || field === 'departure') {
           // 勤怠データの場合、実際のAttendanceレコードIDを取得する必要がある
           let actualAttendanceId = recordId;
-          
+
           // 仮想レコードID（daily-で始まる）の場合は、該当する打刻記録を検索
           if (recordId.startsWith('daily-')) {
             console.log('仮想レコードから実際の打刻記録を検索:', { recordId, field });
-            
+
             // recordIdから日付とユーザーIDを抽出 (daily-YYYY-MM-DD-userId形式)
             const parts = recordId.split('-');
             if (parts.length >= 5) {
               const dateStr = `${parts[1]}-${parts[2]}-${parts[3]}`;
               const userId = parts[4];
-              
+
               // その日の該当する打刻記録を検索
               const targetDate = new Date(dateStr);
               const startOfDay = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate());
               const endOfDay = new Date(startOfDay);
               endOfDay.setDate(endOfDay.getDate() + 1);
-              
-              let targetType;
+
+              let targetTypeString: string;
               switch (field) {
                 case 'clockIn':
-                  targetType = 'CLOCK_IN';
+                  targetTypeString = 'CLOCK_IN';
                   break;
                 case 'clockOut':
-                  targetType = 'CLOCK_OUT';
+                  targetTypeString = 'CLOCK_OUT';
                   break;
                 case 'wakeUp':
-                  targetType = 'WAKE_UP';
+                  targetTypeString = 'WAKE_UP';
                   break;
                 case 'departure':
-                  targetType = 'DEPARTURE';
+                  targetTypeString = 'DEPARTURE';
                   break;
                 default:
                   return NextResponse.json({ error: "無効なフィールド" }, { status: 400 });
               }
-              
+
+              // 型ガードで検証
+              if (!isAttendanceType(targetTypeString)) {
+                return NextResponse.json({ error: "無効な出勤タイプ" }, { status: 400 });
+              }
+
               const existingRecord = await prisma.attendance.findFirst({
                 where: {
                   userId: userId,
-                  type: targetType,
+                  type: targetTypeString,
                   date: {
                     gte: startOfDay,
                     lt: endOfDay,
                   },
                 },
               });
-              
+
               if (existingRecord) {
                 actualAttendanceId = existingRecord.id;
                 console.log('既存の打刻記録を発見:', actualAttendanceId);
@@ -125,14 +137,14 @@ export async function POST(request: Request) {
                 const newRecord = await prisma.attendance.create({
                   data: {
                     userId: userId,
-                    type: targetType,
+                    type: targetTypeString,
                     date: startOfDay,
                     clockTime: processedValue,
                   },
                 });
-                
-                return NextResponse.json({ 
-                  success: true, 
+
+                return NextResponse.json({
+                  success: true,
                   message: "新規打刻記録を作成しました",
                   result: newRecord
                 });
@@ -141,7 +153,7 @@ export async function POST(request: Request) {
               return NextResponse.json({ error: "無効なレコードID形式です" }, { status: 400 });
             }
           }
-          
+
           // 既存の打刻記録を更新
           const originalRecord = await prisma.attendance.findUnique({ where: { id: actualAttendanceId } });
           if (!originalRecord) {
@@ -186,10 +198,13 @@ export async function POST(request: Request) {
           'category': 'type',
           'amount': 'amount',
           'description': 'description',
-          'date': 'date'
+          'date': 'date',
+          'departure': 'departure',
+          'arrival': 'arrival',
+          'type': 'type'
         };
         const dbField = expenseFieldMapping[field as keyof typeof expenseFieldMapping] || field;
-        
+
         result = await prisma.expense.update({
           where: { id: recordId },
           data: { [dbField]: processedValue },
@@ -200,18 +215,18 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "不正なタイプ" }, { status: 400 });
     }
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       message: "更新しました",
-      result 
+      result
     });
 
   } catch (error) {
     console.error("インライン編集エラー:", error);
     return NextResponse.json(
-      { 
-        error: "更新に失敗しました", 
-        details: (error as Error).message 
+      {
+        error: "更新に失敗しました",
+        details: (error as Error).message
       },
       { status: 500 }
     );

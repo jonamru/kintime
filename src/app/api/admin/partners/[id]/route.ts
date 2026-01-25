@@ -24,7 +24,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 
     const requestData = await request.json();
     console.log("Received request data:", requestData);
-    
+
     const {
       name,
       userIdPrefix,
@@ -68,7 +68,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     // 名前の重複チェック（自分以外）
     if (name.trim() !== existingPartner.name) {
       const duplicatePartner = await prisma.partner.findFirst({
-        where: { 
+        where: {
           name: name.trim(),
           id: { not: id }
         }
@@ -86,14 +86,14 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     const newPrefix = userIdPrefix.trim().toUpperCase();
     const currentPrefix = existingPartner.userIdPrefix || '';
     console.log("Prefix comparison:", { newPrefix, currentPrefix });
-    
+
     if (newPrefix !== currentPrefix) {
       try {
         console.log("Checking prefix duplicate for:", newPrefix);
         const { checkPrefixDuplicate } = await import("@/lib/userIdGenerator");
         const prefixExists = await checkPrefixDuplicate(newPrefix, id);
         console.log("Prefix duplicate check result:", prefixExists);
-        
+
         if (prefixExists) {
           console.log("Prefix already exists");
           return NextResponse.json(
@@ -134,11 +134,20 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       isActive: isActive ?? true,
     };
     console.log("Update data:", updateData);
-    
+
     const updatedPartner = await prisma.partner.update({
       where: { id },
       data: updateData,
     });
+
+    // パートナーが無効化された場合、所属ユーザーも無効化
+    if (isActive === false) {
+      const deactivatedUsers = await prisma.user.updateMany({
+        where: { partnerId: id },
+        data: { isActive: false }
+      });
+      console.log(`Partner deactivated: ${deactivatedUsers.count} users also deactivated`);
+    }
 
     console.log("Partner updated successfully:", updatedPartner);
     return NextResponse.json(updatedPartner);
@@ -197,7 +206,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   } catch (error) {
     console.error("パートナー企業削除エラー:", error);
     return NextResponse.json(
-      { 
+      {
         error: "パートナー企業の削除に失敗しました",
         details: error instanceof Error ? error.message : String(error)
       },

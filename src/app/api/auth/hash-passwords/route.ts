@@ -49,7 +49,7 @@ export async function POST(request: Request) {
       skippedCount,
       totalUsers: users.length,
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("パスワードハッシュ化エラー:", error);
     return NextResponse.json(
       { error: "パスワードのハッシュ化に失敗しました" },

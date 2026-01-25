@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { hasPermission, hasPermissionForUser, getAccessibleUserIds } from "@/lib/permissions";
+import type { User, Attendance, Shift, Expense, CustomRole, Partner, ApiResponse, BulkEditPermissions } from "@/types/common";
+import { Prisma } from "@prisma/client";
 
 export async function GET(request: Request) {
   try {
@@ -14,7 +16,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "年月が指定されていません" }, { status: 400 });
     }
 
-    const currentUser = await getCurrentUser(request as any);
+    const currentUser = await getCurrentUser(request);
     
     if (!currentUser) {
       return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
@@ -23,7 +25,7 @@ export async function GET(request: Request) {
     const startDate = new Date(year, month - 1, 1);
     const endDate = new Date(year, month, 0, 23, 59, 59);
 
-    let whereCondition: any = {
+    const whereCondition: Prisma.AttendanceWhereInput = {
       date: {
         gte: startDate,
         lte: endDate,
@@ -84,7 +86,7 @@ export async function GET(request: Request) {
     });
 
     return NextResponse.json(attendances);
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("勤怠履歴取得エラー:", error);
     return NextResponse.json(
       { error: "勤怠履歴の取得に失敗しました" },

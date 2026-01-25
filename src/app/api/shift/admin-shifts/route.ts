@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { getUserPermissions, getAccessibleUserIds } from "@/lib/permissions";
 import { formatJapanDate, formatJapanDateTime } from "@/lib/dateUtils";
+import { Prisma } from "@prisma/client";
 
 export async function GET(request: Request) {
   try {
@@ -92,7 +93,7 @@ export async function GET(request: Request) {
         console.log(`一括修正用データ生成完了: ${monthlyData.length}件`);
         return NextResponse.json(monthlyData);
 
-      } catch (error) {
+      } catch (error: unknown) {
         console.error('一括修正データ生成エラー:', error);
         return NextResponse.json({ error: '一括修正データの生成に失敗しました' }, { status: 500 });
       }
@@ -100,7 +101,7 @@ export async function GET(request: Request) {
 
     // 通常のシフト取得処理
     // クエリ条件を設定
-    const whereCondition: any = {
+    const whereCondition: Prisma.ShiftWhereInput = {
       date: {
         gte: startDate,
         lte: endDate,
@@ -158,7 +159,7 @@ export async function GET(request: Request) {
     }));
 
     return NextResponse.json(shiftsWithJapanDates);
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("管理者シフト取得エラー:", error);
     return NextResponse.json(
       { error: "シフトの取得に失敗しました" },

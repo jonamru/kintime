@@ -31,6 +31,7 @@ body {
     transform: translateX(100%);
     opacity: 0;
   }
+
   to {
     transform: translateX(0);
     opacity: 1;
@@ -39,4 +40,48 @@ body {
 
 .animate-slide-in {
   animation: slide-in 0.3s ease-out;
+}
+
+/* iOS Safari フォーム要素のスタイルリセット */
+input:not([type="radio"]):not([type="checkbox"]),
+select,
+textarea {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  box-sizing: border-box;
+  max-width: 100%;
+  color: #374151;
+  /* グレーのテキスト色を明示的に指定 */
+}
+
+/* iOS Safari の時刻選択入力の修正 */
+input[type="time"],
+input[type="date"],
+input[type="datetime-local"] {
+  min-height: 2.5rem;
+  /* 40px */
+  /* iOS Safari の時刻入力内部要素の幅を制限 */
+  width: 100% !important;
+}
+
+/* iOS Safari の時刻入力の内部要素 - CRITICAL FIX */
+input[type="time"]::-webkit-datetime-edit,
+input[type="date"]::-webkit-datetime-edit,
+input[type="datetime-local"]::-webkit-datetime-edit {
+  display: flex;
+  /* blockだとChromeで高さが崩れるためflexに変更 */
+  align-items: center;
+  /* 垂直方向のセンタリング */
+  width: 100% !important;
+  /* 他の入力欄と幅を揃える */
+  padding: 0;
+  margin: 0;
+}
+
+input[type="time"]::-webkit-datetime-edit-fields-wrapper,
+input[type="date"]::-webkit-datetime-edit-fields-wrapper,
+input[type="datetime-local"]::-webkit-datetime-edit-fields-wrapper {
+  padding: 0;
+  margin: 0;
 }

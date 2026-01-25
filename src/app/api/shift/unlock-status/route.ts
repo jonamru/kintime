@@ -4,7 +4,7 @@ import { getCurrentUser } from "@/lib/auth";
 
 export async function GET(request: Request) {
   try {
-    const currentUser = await getCurrentUser(request as any);
+    const currentUser = await getCurrentUser(request);
     
     if (!currentUser) {
       return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
@@ -51,7 +51,7 @@ export async function GET(request: Request) {
       year: currentYear,
       month: currentMonth
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("ロック解除状態取得エラー:", error);
     return NextResponse.json(
       { error: "状態の取得に失敗しました" },

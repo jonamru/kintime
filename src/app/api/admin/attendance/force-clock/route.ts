@@ -7,7 +7,7 @@ export async function POST(request: Request) {
   try {
     const { userId, type, clockTime } = await request.json();
 
-    const currentUser = await getCurrentUser(request as any);
+    const currentUser = await getCurrentUser(request);
     
     if (!currentUser) {
       return NextResponse.json({ error: "認証が必要です" }, { status: 401 });

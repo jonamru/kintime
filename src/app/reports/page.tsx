@@ -1,24 +1,54 @@
 'use client'
 
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import PageAccessGuard from '@/components/PageAccessGuard'
 import TimeBaseHeader from '@/components/TimeBaseHeader'
+import { hasUserPermission } from '@/lib/clientPermissions'
+import { AuthUser } from '@/lib/auth'
 
-export default function ReportsPage() {
+// 動的レンダリングを強制
+export const dynamic = 'force-dynamic'
+
+interface Partner {
+  id: string
+  name: string
+}
+
+interface User {
+  id: string
+  name: string
+  userId?: string
+  partner?: Partner | null
+  customRole?: {
+    permissions?: {
+      expenseManagement?: {
+        viewAll?: boolean
+      }
+      shiftManagement?: {
+        viewAll?: boolean
+      }
+      attendanceManagement?: {
+        viewAll?: boolean
+      }
+    }
+  }
+}
+
+function ReportsContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [activeTab, setActiveTab] = useState<'attendance' | 'expense' | 'shift'>('attendance')
   const [selectedMonth, setSelectedMonth] = useState<string>('')
   const [selectedUserId, setSelectedUserId] = useState<string>('')
-  const [users, setUsers] = useState<any[]>([])
-  const [partners, setPartners] = useState<any[]>([])
+  const [users, setUsers] = useState<User[]>([])
+  const [partners, setPartners] = useState<Partner[]>([])
   const [reportType, setReportType] = useState<'full' | 'submission' | 'submission_with_expenses'>('full')
   const [pdfOrientation, setPdfOrientation] = useState<'landscape' | 'portrait'>('portrait')
   const [shiftScope, setShiftScope] = useState<'user' | 'company' | 'all'>('user')
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([])
   const [selectedPartnerId, setSelectedPartnerId] = useState<string>('')
-  const [currentUser, setCurrentUser] = useState<any>(null)
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null)
   const [showShiftLocation, setShowShiftLocation] = useState<boolean>(false)
   const [userSearchQuery, setUserSearchQuery] = useState<string>('')
   const [attendanceUserSearchQuery, setAttendanceUserSearchQuery] = useState<string>('')
@@ -35,16 +65,17 @@ export default function ReportsPage() {
     const year = now.getFullYear()
     const month = String(now.getMonth() + 1).padStart(2, '0')
     setSelectedMonth(`${year}-${month}`)
-    
+
     // URLパラメータからタブ情報を読み取る
     const tabFromUrl = searchParams.get('tab')
     if (tabFromUrl && ['attendance', 'expense', 'shift'].includes(tabFromUrl)) {
       setActiveTab(tabFromUrl as 'attendance' | 'expense' | 'shift')
     }
-    
+
     fetchCurrentUser()
     fetchUsers()
     fetchPartners()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]) // searchParamsを依存配列に追加
 
   const fetchCurrentUser = async () => {
@@ -57,7 +88,7 @@ export default function ReportsPage() {
           setSelectedUserId(data.id)
         }
       }
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Failed to fetch current user:', error)
     }
   }
@@ -69,7 +100,7 @@ export default function ReportsPage() {
         const data = await response.json()
         const userList = data.users || []
         setUsers(userList)
-        
+
         // selectedUserIdが未設定の場合、最初のユーザーを選択
         if (!selectedUserId && userList.length > 0) {
           setSelectedUserId(userList[0].id)
@@ -77,7 +108,7 @@ export default function ReportsPage() {
       } else {
         setUsers([])
       }
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Failed to fetch users:', error)
       setUsers([])
     }
@@ -92,7 +123,7 @@ export default function ReportsPage() {
       } else {
         setPartners([])
       }
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Failed to fetch partners:', error)
       setPartners([])
     }
@@ -103,8 +134,8 @@ export default function ReportsPage() {
     return users.filter(user => {
       const searchLower = userSearchQuery.toLowerCase()
       return user.name.toLowerCase().includes(searchLower) ||
-             (user.userId && user.userId.toLowerCase().includes(searchLower)) ||
-             (user.partner && user.partner.name && user.partner.name.toLowerCase().includes(searchLower))
+        (user.userId && user.userId.toLowerCase().includes(searchLower)) ||
+        (user.partner && user.partner.name && user.partner.name.toLowerCase().includes(searchLower))
     })
   }, [users, userSearchQuery])
 
@@ -113,8 +144,8 @@ export default function ReportsPage() {
     return users.filter(user => {
       const searchLower = attendanceUserSearchQuery.toLowerCase()
       return user.name.toLowerCase().includes(searchLower) ||
-             (user.userId && user.userId.toLowerCase().includes(searchLower)) ||
-             (user.partner && user.partner.name && user.partner.name.toLowerCase().includes(searchLower))
+        (user.userId && user.userId.toLowerCase().includes(searchLower)) ||
+        (user.partner && user.partner.name && user.partner.name.toLowerCase().includes(searchLower))
     })
   }, [users, attendanceUserSearchQuery])
 
@@ -123,10 +154,54 @@ export default function ReportsPage() {
     return users.filter(user => {
       const searchLower = expenseUserSearchQuery.toLowerCase()
       return user.name.toLowerCase().includes(searchLower) ||
-             (user.userId && user.userId.toLowerCase().includes(searchLower)) ||
-             (user.partner && user.partner.name && user.partner.name.toLowerCase().includes(searchLower))
+        (user.userId && user.userId.toLowerCase().includes(searchLower)) ||
+        (user.partner && user.partner.name && user.partner.name.toLowerCase().includes(searchLower))
     })
   }, [users, expenseUserSearchQuery])
+
+  // Permission checks for each report type
+  const canViewAllAttendance = useMemo(() => {
+    if (!currentUser) return false
+    return hasUserPermission(currentUser, 'attendanceManagement', 'viewAll')
+  }, [currentUser])
+
+  const canViewAllExpense = useMemo(() => {
+    if (!currentUser) return false
+    return hasUserPermission(currentUser, 'expenseManagement', 'viewAll')
+  }, [currentUser])
+
+  const canViewAllShift = useMemo(() => {
+    if (!currentUser) return false
+    return hasUserPermission(currentUser, 'shiftManagement', 'viewAll')
+  }, [currentUser])
+
+  // Filter users for assigned scope - get managed users only
+  const assignedUsers = useMemo(() => {
+    if (!currentUser) return []
+    // Users are already filtered by /api/admin/users based on permissions
+    // If user has assigned scope, API returns only assigned users
+    return users
+  }, [users, currentUser])
+
+  // Filter partners based on permissions
+  const visiblePartners = useMemo(() => {
+    if (!currentUser) return partners
+
+    // If user has viewAll or viewCompany permission for ANY report type, show all partners
+    if (canViewAllAttendance || canViewAllExpense || canViewAllShift) {
+      return partners
+    }
+
+    // Otherwise, filter to show only companies that assigned users belong to
+    const assignedPartnerIds = new Set<string>()
+    assignedUsers.forEach(user => {
+      if (user.partner?.id) {
+        assignedPartnerIds.add(user.partner.id)
+      }
+    })
+
+    return partners.filter(p => assignedPartnerIds.has(p.id))
+  }, [partners, assignedUsers, currentUser, canViewAllAttendance, canViewAllExpense, canViewAllShift])
 
   // エクスポート処理
   const handleExport = useCallback(async (format: 'excel' | 'csv' | 'pdf') => {
@@ -138,58 +213,58 @@ export default function ReportsPage() {
         params.append('scope', attendanceScope)
         params.append('type', reportType)
         params.append('format', format)
-        
+
         if (attendanceScope === 'user') {
           selectedAttendanceUserIds.forEach(id => params.append('userIds', id))
         } else if (attendanceScope === 'company' && selectedAttendancePartnerId) {
           params.append('partnerId', selectedAttendancePartnerId)
         }
-        
+
         if (format === 'pdf') {
           params.append('orientation', pdfOrientation)
         }
-        
+
         endpoint = `/api/reports/attendance?${params.toString()}`
       } else if (activeTab === 'expense') {
         const params = new URLSearchParams()
         params.append('month', selectedMonth)
         params.append('scope', expenseScope)
         params.append('format', format)
-        
+
         if (expenseScope === 'user') {
           selectedExpenseUserIds.forEach(id => params.append('userIds', id))
         } else if (expenseScope === 'company' && selectedExpensePartnerId) {
           params.append('partnerId', selectedExpensePartnerId)
         }
-        
+
         if (format === 'pdf') {
           params.append('orientation', pdfOrientation)
         }
-        
+
         endpoint = `/api/reports/expense?${params.toString()}`
       } else if (activeTab === 'shift') {
         const params = new URLSearchParams()
         params.append('month', selectedMonth)
         params.append('scope', shiftScope)
         params.append('format', format)
-        
+
         if (shiftScope === 'user') {
           selectedUserIds.forEach(id => params.append('userIds', id))
         } else if (shiftScope === 'company' && selectedPartnerId) {
           params.append('partnerId', selectedPartnerId)
         }
-        
+
         if (format === 'pdf') {
           params.append('orientation', pdfOrientation)
         }
-        
+
         if (showShiftLocation) {
           params.append('showLocation', 'true')
         }
-        
+
         endpoint = `/api/reports/shift?${params.toString()}`
       }
-      
+
       const response = await fetch(endpoint)
       if (response.ok) {
         const blob = await response.blob()
@@ -200,14 +275,14 @@ export default function ReportsPage() {
         // ファイル名を取得
         const contentDisposition = response.headers.get('content-disposition')
         let filename = `${activeTab}_${selectedMonth}.${format}`
-        
+
         if (contentDisposition) {
           const filenameMatch = contentDisposition.match(/filename\*=UTF-8''(.+)/)
           if (filenameMatch) {
             filename = decodeURIComponent(filenameMatch[1])
           }
         }
-        
+
         a.download = filename
         document.body.appendChild(a)
         a.click()
@@ -218,24 +293,24 @@ export default function ReportsPage() {
           const error = await response.json()
           console.error('Export API Error:', error)
           alert(`エクスポートに失敗しました: ${error.error || response.statusText}`)
-        } catch (jsonError) {
+        } catch {
           console.error('Export Response Error:', response.status, response.statusText)
           alert(`エクスポートに失敗しました: ${response.status} ${response.statusText}`)
         }
       }
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Export failed:', error)
       alert(`エクスポートに失敗しました: ${error}`)
     }
-  }, [activeTab, selectedMonth, attendanceScope, expenseScope, shiftScope, reportType, pdfOrientation, 
-      selectedAttendanceUserIds, selectedExpenseUserIds, selectedUserIds, selectedAttendancePartnerId, 
-      selectedExpensePartnerId, selectedPartnerId, showShiftLocation])
+  }, [activeTab, selectedMonth, attendanceScope, expenseScope, shiftScope, reportType, pdfOrientation,
+    selectedAttendanceUserIds, selectedExpenseUserIds, selectedUserIds, selectedAttendancePartnerId,
+    selectedExpensePartnerId, selectedPartnerId, showShiftLocation])
 
   // プレビュー処理
   const handlePreview = useCallback(() => {
     // バリデーション
     if (activeTab === 'attendance') {
-      
+
       if (attendanceScope === 'user') {
         if (selectedAttendanceUserIds.length === 0) {
           alert('ユーザーを選択してください')
@@ -275,14 +350,14 @@ export default function ReportsPage() {
         return
       }
     }
-    
+
     if (!selectedMonth) {
       alert('対象年月を選択してください')
       return
     }
-    
+
     let params = new URLSearchParams()
-    
+
     if (activeTab === 'attendance') {
       // 単一ユーザーのみ
       params = new URLSearchParams({
@@ -313,13 +388,14 @@ export default function ReportsPage() {
       }
       router.push(`/reports/shift/preview?${params}&tab=shift`)
     }
-  }, [activeTab, selectedMonth, attendanceScope, expenseScope, shiftScope, reportType, 
-      selectedAttendanceUserIds, selectedExpenseUserIds, selectedUserIds, selectedAttendancePartnerId, 
-      selectedExpensePartnerId, selectedPartnerId, showShiftLocation, router])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, selectedMonth, attendanceScope, expenseScope, shiftScope, reportType,
+    selectedAttendanceUserIds, selectedExpenseUserIds, selectedUserIds,
+    selectedPartnerId, showShiftLocation, router])
 
   return (
     <PageAccessGuard page="reports">
-      <TimeBaseHeader 
+      <TimeBaseHeader
         rightAction={
           <a
             href="/dashboard"
@@ -345,11 +421,10 @@ export default function ReportsPage() {
                 setActiveTab('attendance')
                 setAttendanceUserSearchQuery('')
               }}
-              className={`px-4 py-2 font-medium transition-colors ${
-                activeTab === 'attendance'
-                  ? 'text-blue-600 border-b-2 border-blue-600'
-                  : 'text-gray-600 hover:text-gray-800'
-              }`}
+              className={`px-4 py-2 font-medium transition-colors ${activeTab === 'attendance'
+                ? 'text-blue-600 border-b-2 border-blue-600'
+                : 'text-gray-600 hover:text-gray-800'
+                }`}
             >
               勤務管理表
             </button>
@@ -358,11 +433,10 @@ export default function ReportsPage() {
                 setActiveTab('expense')
                 setExpenseUserSearchQuery('')
               }}
-              className={`px-4 py-2 font-medium transition-colors ${
-                activeTab === 'expense'
-                  ? 'text-blue-600 border-b-2 border-blue-600'
-                  : 'text-gray-600 hover:text-gray-800'
-              }`}
+              className={`px-4 py-2 font-medium transition-colors ${activeTab === 'expense'
+                ? 'text-blue-600 border-b-2 border-blue-600'
+                : 'text-gray-600 hover:text-gray-800'
+                }`}
             >
               経費管理表
             </button>
@@ -371,11 +445,10 @@ export default function ReportsPage() {
                 setActiveTab('shift')
                 setUserSearchQuery('')
               }}
-              className={`px-4 py-2 font-medium transition-colors ${
-                activeTab === 'shift'
-                  ? 'text-blue-600 border-b-2 border-blue-600'
-                  : 'text-gray-600 hover:text-gray-800'
-              }`}
+              className={`px-4 py-2 font-medium transition-colors ${activeTab === 'shift'
+                ? 'text-blue-600 border-b-2 border-blue-600'
+                : 'text-gray-600 hover:text-gray-800'
+                }`}
             >
               シフト表
             </button>
@@ -405,7 +478,7 @@ export default function ReportsPage() {
                     type="radio"
                     value="user"
                     checked={attendanceScope === 'user'}
-                    onChange={(e) => setAttendanceScope('user')}
+                    onChange={() => setAttendanceScope('user')}
                     className="mr-2"
                   />
                   選択したユーザー
@@ -415,21 +488,23 @@ export default function ReportsPage() {
                     type="radio"
                     value="company"
                     checked={attendanceScope === 'company'}
-                    onChange={(e) => setAttendanceScope('company')}
+                    onChange={() => setAttendanceScope('company')}
                     className="mr-2"
                   />
                   所属会社
                 </label>
-                <label className="flex items-center">
-                  <input
-                    type="radio"
-                    value="all"
-                    checked={attendanceScope === 'all'}
-                    onChange={(e) => setAttendanceScope('all')}
-                    className="mr-2"
-                  />
-                  全員
-                </label>
+                {canViewAllAttendance && (
+                  <label className="flex items-center">
+                    <input
+                      type="radio"
+                      value="all"
+                      checked={attendanceScope === 'all'}
+                      onChange={() => setAttendanceScope('all')}
+                      className="mr-2"
+                    />
+                    全員
+                  </label>
+                )}
               </div>
             ) : activeTab === 'expense' ? (
               <div className="space-y-2">
@@ -438,7 +513,7 @@ export default function ReportsPage() {
                     type="radio"
                     value="user"
                     checked={expenseScope === 'user'}
-                    onChange={(e) => setExpenseScope('user')}
+                    onChange={() => setExpenseScope('user')}
                     className="mr-2"
                   />
                   選択したユーザー
@@ -448,21 +523,23 @@ export default function ReportsPage() {
                     type="radio"
                     value="company"
                     checked={expenseScope === 'company'}
-                    onChange={(e) => setExpenseScope('company')}
+                    onChange={() => setExpenseScope('company')}
                     className="mr-2"
                   />
                   所属会社
                 </label>
-                <label className="flex items-center">
-                  <input
-                    type="radio"
-                    value="all"
-                    checked={expenseScope === 'all'}
-                    onChange={(e) => setExpenseScope('all')}
-                    className="mr-2"
-                  />
-                  全員
-                </label>
+                {canViewAllExpense && (
+                  <label className="flex items-center">
+                    <input
+                      type="radio"
+                      value="all"
+                      checked={expenseScope === 'all'}
+                      onChange={() => setExpenseScope('all')}
+                      className="mr-2"
+                    />
+                    全員
+                  </label>
+                )}
               </div>
             ) : activeTab === 'shift' ? (
               <div className="space-y-2">
@@ -471,7 +548,7 @@ export default function ReportsPage() {
                     type="radio"
                     value="user"
                     checked={shiftScope === 'user'}
-                    onChange={(e) => setShiftScope('user')}
+                    onChange={() => setShiftScope('user')}
                     className="mr-2"
                   />
                   選択したユーザー（複数選択可）
@@ -481,21 +558,23 @@ export default function ReportsPage() {
                     type="radio"
                     value="company"
                     checked={shiftScope === 'company'}
-                    onChange={(e) => setShiftScope('company')}
+                    onChange={() => setShiftScope('company')}
                     className="mr-2"
                   />
                   所属会社
                 </label>
-                <label className="flex items-center">
-                  <input
-                    type="radio"
-                    value="all"
-                    checked={shiftScope === 'all'}
-                    onChange={(e) => setShiftScope('all')}
-                    className="mr-2"
-                  />
-                  全員
-                </label>
+                {canViewAllShift && (
+                  <label className="flex items-center">
+                    <input
+                      type="radio"
+                      value="all"
+                      checked={shiftScope === 'all'}
+                      onChange={() => setShiftScope('all')}
+                      className="mr-2"
+                    />
+                    全員
+                  </label>
+                )}
               </div>
             ) : null}
           </div>
@@ -513,8 +592,12 @@ export default function ReportsPage() {
               className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">会社を選択してください</option>
-              <option value="self">自社</option>
-              {Array.isArray(partners) && partners.map((partner) => (
+              {currentUser?.partner?.id ? (
+                <option value="self">{currentUser.partner.name}</option>
+              ) : (
+                <option value="self">自社</option>
+              )}
+              {Array.isArray(visiblePartners) && visiblePartners.map((partner: Partner) => (
                 <option key={partner.id} value={partner.id}>
                   {partner.name}
                 </option>
@@ -607,8 +690,12 @@ export default function ReportsPage() {
               className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">会社を選択してください</option>
-              <option value="self">自社</option>
-              {Array.isArray(partners) && partners.map((partner) => (
+              {currentUser?.partner?.id ? (
+                <option value="self">{currentUser.partner.name}</option>
+              ) : (
+                <option value="self">自社</option>
+              )}
+              {Array.isArray(visiblePartners) && visiblePartners.map((partner: Partner) => (
                 <option key={partner.id} value={partner.id}>
                   {partner.name}
                 </option>
@@ -701,8 +788,12 @@ export default function ReportsPage() {
               className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">会社を選択してください</option>
-              <option value="self">自社</option>
-              {Array.isArray(partners) && partners.map((partner) => (
+              {currentUser?.partner?.id ? (
+                <option value="self">{currentUser.partner.name}</option>
+              ) : (
+                <option value="self">自社</option>
+              )}
+              {Array.isArray(visiblePartners) && visiblePartners.map((partner: Partner) => (
                 <option key={partner.id} value={partner.id}>
                   {partner.name}
                 </option>
@@ -796,7 +887,7 @@ export default function ReportsPage() {
                   type="radio"
                   value="full"
                   checked={reportType === 'full'}
-                  onChange={(e) => setReportType('full')}
+                  onChange={() => setReportType('full')}
                   className="mr-2"
                 />
                 全情報表示版
@@ -806,7 +897,7 @@ export default function ReportsPage() {
                   type="radio"
                   value="submission"
                   checked={reportType === 'submission'}
-                  onChange={(e) => setReportType('submission')}
+                  onChange={() => setReportType('submission')}
                   className="mr-2"
                 />
                 提出用（基本）
@@ -816,7 +907,7 @@ export default function ReportsPage() {
                   type="radio"
                   value="submission_with_expenses"
                   checked={reportType === 'submission_with_expenses'}
-                  onChange={(e) => setReportType('submission_with_expenses')}
+                  onChange={() => setReportType('submission_with_expenses')}
                   className="mr-2"
                 />
                 提出用（交通費含む）
@@ -857,7 +948,7 @@ export default function ReportsPage() {
                 type="radio"
                 value="portrait"
                 checked={pdfOrientation === 'portrait'}
-                onChange={(e) => setPdfOrientation('portrait')}
+                onChange={() => setPdfOrientation('portrait')}
                 className="mr-2"
               />
               縦向き
@@ -867,7 +958,7 @@ export default function ReportsPage() {
                 type="radio"
                 value="landscape"
                 checked={pdfOrientation === 'landscape'}
-                onChange={(e) => setPdfOrientation('landscape')}
+                onChange={() => setPdfOrientation('landscape')}
                 className="mr-2"
               />
               横向き
@@ -883,21 +974,21 @@ export default function ReportsPage() {
           >
             プレビュー
           </button>
-          
+
           <button
             onClick={() => handleExport('excel')}
             className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
           >
             Excel出力
           </button>
-          
+
           <button
             onClick={() => handleExport('csv')}
             className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
           >
             CSV出力
           </button>
-          
+
           <button
             onClick={() => handleExport('pdf')}
             className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
@@ -907,5 +998,20 @@ export default function ReportsPage() {
         </div>
       </div>
     </PageAccessGuard>
+  )
+}
+
+export default function ReportsPage() {
+  return (
+    <Suspense fallback={
+      <PageAccessGuard page="reports">
+        <TimeBaseHeader />
+        <div className="container mx-auto px-4 py-6">
+          <div className="text-center">読み込み中...</div>
+        </div>
+      </PageAccessGuard>
+    }>
+      <ReportsContent />
+    </Suspense>
   )
 }

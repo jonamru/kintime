@@ -147,6 +147,66 @@ if (!hasEditPermission) {
 - **開発サーバー**: `npm run dev`
 - **Prisma生成**: `npx prisma generate`
 - **マイグレーション**: `npx prisma migrate dev`
+- **型チェックのみ**: `npx tsc --noEmit`
+
+### ビルドエラー対処法
+
+#### TypeScriptエラーの効率的な修正
+1. **TypeScriptコンパイラでエラー一覧を確認**
+   ```bash
+   npx tsc --noEmit 2>&1 | grep "error TS"  # エラー一覧
+   npx tsc --noEmit 2>&1 | grep "error TS" | wc -l  # エラー数カウント
+   ```
+
+2. **一時的なビルドエラー無視（開発時のみ）**
+   ```javascript
+   // next.config.js
+   module.exports = {
+     typescript: {
+       ignoreBuildErrors: true  // 本番環境では推奨しない
+     }
+   }
+   ```
+
+2. **よくある型エラーと対処法**
+   - `undefined`の可能性: オプショナルチェイニング(`?.`)や nullish coalescing(`??`)を使用
+   - 型の不一致: 適切な型ガードや型アサーションを使用
+   - unknown型: 具体的な型定義を作成
+
+3. **ESLint警告の対処**
+   ```javascript
+   // .eslintrc.json で特定のルールを無効化
+   {
+     "rules": {
+       "@typescript-eslint/no-unused-vars": "warn",
+       "react-hooks/exhaustive-deps": "warn"
+     }
+   }
+   ```
+
+#### Dockerビルド最適化
+1. **マルチステージビルドの活用**
+2. **キャッシュの効率的な利用**
+3. **不要なファイルの除外（.dockerignore）**
+
+#### Next.js 15のエラー対処
+1. **useSearchParams() のSuspense境界エラー**
+   ```tsx
+   // エラー: useSearchParams() should be wrapped in a suspense boundary
+   // 解決法: コンポーネントを分離してSuspenseでラップ
+   function ContentComponent() {
+     const searchParams = useSearchParams()
+     // ...
+   }
+   
+   export default function Page() {
+     return (
+       <Suspense fallback={<div>Loading...</div>}>
+         <ContentComponent />
+       </Suspense>
+     )
+   }
+   ```
 
 ### 技術スタック
 - **フレームワーク**: Next.js 15

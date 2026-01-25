@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions";
+import type { User, Attendance, Shift, Expense, CustomRole, Partner, ApiResponse, BulkEditPermissions } from "@/types/common";
 
 export async function GET(request: Request) {
   try {
@@ -27,7 +28,17 @@ export async function GET(request: Request) {
     }
 
     // 検索・フィルタ条件を設定
-    const whereCondition: any = { isActive: true };
+    interface WhereCondition {
+      isActive: boolean;
+      OR?: Array<{
+        name?: { contains: string };
+        userIdPrefix?: { contains: string };
+        email?: { contains: string };
+        contactPerson?: { contains: string };
+      }>;
+    }
+    
+    const whereCondition: WhereCondition = { isActive: true };
     
     if (search) {
       whereCondition.OR = [
@@ -64,7 +75,7 @@ export async function GET(request: Request) {
         hasPrevPage: page > 1
       }
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("パートナー取得エラー:", error);
     return NextResponse.json(
       { error: "パートナー情報の取得に失敗しました" },
@@ -151,7 +162,7 @@ export async function POST(request: Request) {
           { status: 400 }
         );
       }
-    } catch (error) {
+    } catch (error: unknown) {
       console.log("Prefix duplicate check failed, continuing:", error);
     }
 
@@ -176,7 +187,7 @@ export async function POST(request: Request) {
 
     console.log("Partner created successfully:", newPartner);
     return NextResponse.json(newPartner);
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("パートナー作成エラー:", error);
     console.error("Error details:", error instanceof Error ? error.message : String(error));
     return NextResponse.json(

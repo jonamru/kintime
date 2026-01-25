@@ -5,24 +5,52 @@ import { useAuth } from "@/components/AuthProvider";
 import LogoutButton from "@/components/LogoutButton";
 import { isUserAdmin, hasUserPageAccess } from "@/lib/clientPermissions";
 
+import type { Attendance, Shift } from "@/types/common";
+
+interface MonthlySummary {
+  scheduledWorkDays?: number;
+  totalWorkHours?: string;
+  workDays?: number;
+  lateCount?: number;
+  earlyLeaveCount?: number;
+  overtimeHours?: string;
+  absentDays?: number;
+  error?: string;
+}
+
 export default function DashboardPage() {
-  const { user, loading } = useAuth();
-  const [todayShift, setTodayShift] = useState<any>(null);
+  const { user, loading: _loading } = useAuth();
+  const [todayShift, setTodayShift] = useState<Shift | null>(null);
   const [shiftLoading, setShiftLoading] = useState(true);
-  const [todayAttendance, setTodayAttendance] = useState<any[]>([]);
+  const [todayAttendance, setTodayAttendance] = useState<Attendance[]>([]);
   const [attendanceLoading, setAttendanceLoading] = useState(true);
-  const [monthlySummary, setMonthlySummary] = useState<any>(null);
-  const [summaryLoading, setSummaryLoading] = useState(true);
+  const [monthlySummary, setMonthlySummary] = useState<MonthlySummary | null>(null);
+  const [monthlyExpense, setMonthlyExpense] = useState<number>(0);
+  const [currentTime, setCurrentTime] = useState<Date>(new Date());
+  const [greeting, setGreeting] = useState<string>("");
+  const [upcomingShifts, setUpcomingShifts] = useState<Shift[]>([]);
 
   useEffect(() => {
     // ページタイトルを設定
     document.title = "TimeBase - ダッシュボード";
-    
+
+    // 時計の更新
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+
+    // 挨拶の更新
+    updateGreeting();
+
     if (user) {
       fetchTodayShift();
       fetchTodayAttendance();
       fetchMonthlySummary();
+      fetchMonthlyExpense();
+      fetchUpcomingShifts();
     }
+
+    return () => clearInterval(timer);
   }, [user]);
 
   useEffect(() => {
@@ -31,9 +59,9 @@ export default function DashboardPage() {
       const sidebar = document.getElementById('sidebar');
       const menuButton = event.target as Element;
       const overlay = document.getElementById('sidebar-overlay');
-      
-      if (sidebar && !sidebar.contains(event.target as Node) && 
-          !menuButton.closest('button[class*="md:hidden"]')) {
+
+      if (sidebar && !sidebar.contains(event.target as Node) &&
+        !menuButton.closest('button[class*="md:hidden"]')) {
         sidebar.classList.add('-translate-x-full');
         overlay?.classList.add('hidden');
       }
@@ -43,8 +71,7 @@ export default function DashboardPage() {
       const target = event.target as Element;
       const sidebar = document.getElementById('sidebar');
       const overlay = document.getElementById('sidebar-overlay');
-      
-      // スマホでメニューリンクをクリックした場合、サイドバーを閉じる
+
       if (target.closest('a') && window.innerWidth < 768) {
         sidebar?.classList.add('-translate-x-full');
         overlay?.classList.add('hidden');
@@ -59,17 +86,23 @@ export default function DashboardPage() {
     };
   }, []);
 
+  const updateGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) {
+      setGreeting("おはようございます");
+    } else if (hour < 18) {
+      setGreeting("こんにちは");
+    } else {
+      setGreeting("こんばんは");
+    }
+  };
+
   const fetchTodayShift = async () => {
     try {
       const response = await fetch("/api/shift/my-today");
       if (response.ok) {
         const data = await response.json();
-        console.log("ダッシュボード - 取得したシフトデータ:", data);
         setTodayShift(data.shift);
-      } else {
-        console.error("シフト取得APIエラー:", response.status, response.statusText);
-        const errorData = await response.json().catch(() => ({}));
-        console.error("エラー詳細:", errorData);
       }
     } catch (error) {
       console.error("今日のシフト取得エラー:", error);
@@ -78,17 +111,38 @@ export default function DashboardPage() {
     }
   };
 
+  const fetchUpcomingShifts = async () => {
+    try {
+      // 明日から3日後までの範囲を計算
+      const today = new Date();
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const threeDaysLater = new Date(today);
+      threeDaysLater.setDate(threeDaysLater.getDate() + 4);
+
+      const startDate = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
+      const endDate = `${threeDaysLater.getFullYear()}-${String(threeDaysLater.getMonth() + 1).padStart(2, '0')}-${String(threeDaysLater.getDate()).padStart(2, '0')}`;
+
+      const response = await fetch(`/api/shift/my-shifts?startDate=${startDate}&endDate=${endDate}`);
+      if (response.ok) {
+        const shifts: Shift[] = await response.json();
+        // ステータスでフィルタリング（APPROVEDまたはCONFIRMED）
+        const upcoming = shifts.filter(shift =>
+          (shift.status as string) === 'APPROVED' || shift.status === 'CONFIRMED'
+        );
+        setUpcomingShifts(upcoming);
+      }
+    } catch (error) {
+      console.error("今後のシフト取得エラー:", error);
+    }
+  };
+
   const fetchTodayAttendance = async () => {
     try {
       const response = await fetch("/api/attendance/today");
       if (response.ok) {
         const data = await response.json();
-        console.log("ダッシュボード - 取得した本日の勤怠:", data);
         setTodayAttendance(data.attendance || []);
-      } else {
-        console.error("本日勤怠取得APIエラー:", response.status, response.statusText);
-        const errorData = await response.json().catch(() => ({}));
-        console.error("エラー詳細:", errorData);
       }
     } catch (error) {
       console.error("本日勤怠取得エラー:", error);
@@ -102,105 +156,142 @@ export default function DashboardPage() {
       const response = await fetch("/api/attendance/monthly-summary");
       if (response.ok) {
         const data = await response.json();
-        console.log("ダッシュボード - 取得した月次サマリー:", data);
         setMonthlySummary(data);
-      } else {
-        console.error("月次サマリー取得APIエラー:", response.status, response.statusText);
-        const errorData = await response.json().catch(() => ({}));
-        console.error("エラー詳細:", errorData);
       }
     } catch (error) {
       console.error("月次サマリー取得エラー:", error);
-    } finally {
-      setSummaryLoading(false);
     }
   };
 
-  const formatTime = (dateString: string) => {
-    return new Date(dateString).toLocaleTimeString("ja-JP", {
+  const fetchMonthlyExpense = async () => {
+    try {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = now.getMonth() + 1;
+      const response = await fetch(`/api/expenses/monthly?year=${year}&month=${month}`);
+      if (response.ok) {
+        const data = await response.json();
+        setMonthlyExpense(data.total || 0);
+      }
+    } catch (error) {
+      console.error("月次経費取得エラー:", error);
+    }
+  };
+
+  const formatTime = (date: string | Date) => {
+    return new Date(date).toLocaleTimeString("ja-JP", {
       hour: "2-digit",
       minute: "2-digit",
     });
   };
 
   const getWorkStatus = () => {
-    if (attendanceLoading || shiftLoading) return { status: "読み込み中...", color: "text-gray-500" };
-    
-    // シフトが登録されていない場合は公休日
+    if (attendanceLoading || shiftLoading) return { status: "読み込み中...", color: "bg-gray-100 text-gray-600" };
+
     if (!todayShift) {
-      // ただし打刻がある場合は打刻状況を表示
       if (todayAttendance && todayAttendance.length > 0) {
         const attendanceTypes = todayAttendance.map(a => a.type);
-        const hasWakeUp = attendanceTypes.includes('WAKE_UP');
-        const hasDeparture = attendanceTypes.includes('DEPARTURE');
-        const hasClockIn = attendanceTypes.includes('CLOCK_IN');
-        const hasClockOut = attendanceTypes.includes('CLOCK_OUT');
-
-        if (hasClockOut) {
-          return { status: "退勤済み", color: "text-green-600" };
-        } else if (hasClockIn) {
-          return { status: "勤務中", color: "text-blue-600" };
-        } else if (hasDeparture) {
-          return { status: "出発済み", color: "text-orange-600" };
-        } else if (hasWakeUp) {
-          return { status: "起床報告済み", color: "text-yellow-600" };
-        }
+        if (attendanceTypes.includes('CLOCK_OUT')) return { status: "退勤済み", color: "bg-green-100 text-green-700" };
+        if (attendanceTypes.includes('CLOCK_IN')) return { status: "勤務中", color: "bg-blue-100 text-blue-700" };
+        if (attendanceTypes.includes('DEPARTURE')) return { status: "出発済み", color: "bg-orange-100 text-orange-700" };
+        if (attendanceTypes.includes('WAKE_UP')) return { status: "起床報告済み", color: "bg-yellow-100 text-yellow-700" };
       }
-      return { status: "公休日", color: "text-purple-600" };
+      return { status: "公休日", color: "bg-purple-100 text-purple-700" };
     }
 
-    // シフトがある場合の打刻状況確認
     if (!todayAttendance || todayAttendance.length === 0) {
-      return { status: "勤務前", color: "text-gray-600" };
+      return { status: "勤務前", color: "bg-gray-100 text-gray-600" };
     }
 
     const attendanceTypes = todayAttendance.map(a => a.type);
-    const hasWakeUp = attendanceTypes.includes('WAKE_UP');
-    const hasDeparture = attendanceTypes.includes('DEPARTURE');
-    const hasClockIn = attendanceTypes.includes('CLOCK_IN');
-    const hasClockOut = attendanceTypes.includes('CLOCK_OUT');
+    if (attendanceTypes.includes('CLOCK_OUT')) return { status: "退勤済み", color: "bg-green-100 text-green-700" };
+    if (attendanceTypes.includes('CLOCK_IN')) return { status: "勤務中", color: "bg-blue-100 text-blue-700" };
+    if (attendanceTypes.includes('DEPARTURE')) return { status: "出発済み", color: "bg-orange-100 text-orange-700" };
+    if (attendanceTypes.includes('WAKE_UP')) return { status: "起床報告済み", color: "bg-yellow-100 text-yellow-700" };
 
-    if (hasClockOut) {
-      return { status: "退勤済み", color: "text-green-600" };
-    } else if (hasClockIn) {
-      return { status: "勤務中", color: "text-blue-600" };
-    } else if (hasDeparture) {
-      return { status: "出発済み", color: "text-orange-600" };
-    } else if (hasWakeUp) {
-      return { status: "起床報告済み", color: "text-yellow-600" };
-    }
-
-    return { status: "勤務前", color: "text-gray-600" };
+    return { status: "勤務前", color: "bg-gray-100 text-gray-600" };
   };
+
+
 
   const getAttendanceDetails = () => {
     if (!todayAttendance || todayAttendance.length === 0) return [];
-    
+
     return todayAttendance.map(attendance => {
       const time = formatTime(attendance.clockTime);
+      let label: string = attendance.type;
+      let icon = null;
+      let color = "text-gray-600";
+      let bg = "bg-gray-100";
+
       switch (attendance.type) {
         case 'WAKE_UP':
-          return { label: "起床報告", time, color: "text-yellow-600" };
+          label = "起床報告";
+          color = "text-yellow-600";
+          bg = "bg-yellow-100";
+          icon = (
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+            </svg>
+          );
+          break;
         case 'DEPARTURE':
-          return { label: "出発報告", time, color: "text-orange-600" };
+          label = "出発報告";
+          color = "text-orange-600";
+          bg = "bg-orange-100";
+          icon = (
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+            </svg>
+          );
+          break;
         case 'CLOCK_IN':
-          return { label: "出勤", time, color: "text-blue-600" };
+          label = "出勤";
+          color = "text-blue-600";
+          bg = "bg-blue-100";
+          icon = (
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
+            </svg>
+          );
+          break;
         case 'CLOCK_OUT':
-          return { label: "退勤", time, color: "text-green-600" };
+          label = "退勤";
+          color = "text-green-600";
+          bg = "bg-green-100";
+          icon = (
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
+            </svg>
+          );
+          break;
         default:
-          return { label: attendance.type, time, color: "text-gray-600" };
+          break;
       }
+      return { label, time, color, bg, icon };
     });
   };
 
+  const getLatestClockInTime = () => {
+    const clockIn = todayAttendance.find(a => a.type === 'CLOCK_IN');
+    if (!clockIn) return "--:--";
+    return formatTime(clockIn.clockTime);
+  };
+
   if (!user) {
-    return null; // AuthProviderがリダイレクトを処理
+    return null;
   }
+
+  const statusInfo = getWorkStatus();
+  const attendanceDetails = getAttendanceDetails();
+  const progressPercent = monthlySummary && monthlySummary.scheduledWorkDays
+    ? Math.min(Math.round(((monthlySummary.workDays || 0) / monthlySummary.scheduledWorkDays) * 100), 100)
+    : 0;
 
   return (
     <div className="flex min-h-screen bg-gray-50">
       {/* モバイル用オーバーレイ */}
-      <div 
+      <div
         id="sidebar-overlay"
         className="fixed inset-0 bg-gray-600 bg-opacity-75 z-40 md:hidden hidden"
         onClick={() => {
@@ -210,7 +301,7 @@ export default function DashboardPage() {
           overlay?.classList.add('hidden');
         }}
       />
-      
+
       {/* サイドバー */}
       <aside className="w-64 bg-white shadow-lg fixed left-0 top-0 h-full z-50 transform -translate-x-full md:translate-x-0 transition-transform duration-300 ease-in-out" id="sidebar">
         <div className="flex flex-col h-full">
@@ -246,7 +337,7 @@ export default function DashboardPage() {
                   </svg>
                   ダッシュボード
                 </a>
-{hasUserPageAccess(user, 'attendance') && (
+                {hasUserPageAccess(user, 'attendance') && (
                   <a
                     href="/attendance"
                     className="group flex items-center px-3 py-3 md:py-2 text-sm font-medium text-gray-700 rounded-lg hover:bg-blue-50 hover:text-blue-600"
@@ -360,6 +451,18 @@ export default function DashboardPage() {
                       月次一覧
                     </a>
                   )}
+                  {/* Register Lock Mng */}
+                  {hasUserPageAccess(user, 'expenseLock') && (
+                    <a
+                      href="/admin/expense-lock"
+                      className="group flex items-center px-3 py-3 md:py-2 text-sm font-medium text-gray-700 rounded-lg hover:bg-blue-50 hover:text-blue-600"
+                    >
+                      <svg className="mr-3 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                      </svg>
+                      経費ロック管理
+                    </a>
+                  )}
                 </div>
               </div>
             )}
@@ -458,174 +561,306 @@ export default function DashboardPage() {
         </div>
       </aside>
 
-      {/* メインコンテンツ */}
-      <main className="flex-1 overflow-y-auto ml-0 md:ml-64">
-        {/* ヘッダー */}
-        <header className="bg-white shadow-sm">
-          <div className="px-4 md:px-6 py-4">
-            <div className="flex justify-between items-center">
-              <div className="flex items-center">
-                <button 
-                  className="md:hidden mr-3 p-2 rounded-md text-gray-600 hover:text-gray-900 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  onClick={() => {
-                    const sidebar = document.getElementById('sidebar');
-                    const overlay = document.getElementById('sidebar-overlay');
-                    if (sidebar && overlay) {
-                      sidebar.classList.toggle('-translate-x-full');
-                      overlay.classList.toggle('hidden');
-                    }
-                  }}
-                >
-                  <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                  </svg>
-                </button>
-                <h1 className="text-xl md:text-2xl font-bold text-gray-900">ダッシュボード</h1>
-              </div>
-{hasUserPageAccess(user, 'attendance') && (
-                <a
-                  href="/attendance"
-                  className="inline-flex items-center px-3 py-2 md:px-4 md:py-2 border border-transparent text-xs md:text-sm font-medium rounded-lg text-white bg-[#4A90E2] hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#4A90E2] transition-all duration-200 shadow-lg hover:shadow-xl"
-                >
-                  <svg className="mr-1 md:mr-2 h-3 w-3 md:h-4 md:w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
-                  </svg>
-                  <span className="hidden sm:inline">出勤打刻</span>
-                  <span className="sm:hidden">打刻</span>
-                </a>
-              )}
+      {/* Main Content matching Prototype */}
+      <main className="flex-1 flex flex-col overflow-hidden bg-gray-50/50 ml-0 md:ml-64">
+        {/* Header */}
+        <header className="bg-white border-b border-gray-200 px-4 py-3 md:px-6 md:py-4 flex items-center justify-between z-10 sticky top-0">
+          <div className="flex items-center flex-1 min-w-0 mr-2">
+            <button
+              className="md:hidden mr-2 p-2 -ml-2 rounded-md text-gray-600 hover:bg-gray-100 flex-shrink-0"
+              onClick={() => {
+                const sidebar = document.getElementById('sidebar');
+                const overlay = document.getElementById('sidebar-overlay');
+                sidebar?.classList.remove('-translate-x-full');
+                overlay?.classList.remove('hidden');
+              }}
+            >
+              <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+            <div className="min-w-0">
+              <h2 className="text-lg md:text-xl font-bold text-gray-800 leading-tight">
+                <span className="block md:inline">{greeting}、</span>
+                <span className="block md:inline">{user.name}さん</span>
+              </h2>
+              <p className="text-xs md:text-sm text-gray-500 mt-1 truncate hidden sm:block">今日の予定を確認しましょう</p>
             </div>
+          </div>
+          <div className="flex items-center flex-shrink-0">
+            <a
+              href="/attendance"
+              className="bg-[#4A90E2] hover:bg-blue-600 text-white px-3 py-2 md:px-4 md:py-2 rounded-lg text-sm font-medium shadow-md shadow-blue-100 transition-all flex items-center whitespace-nowrap"
+            >
+              <svg className="w-4 h-4 md:mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+              </svg>
+              <span className="hidden md:inline">打刻画面へ</span>
+              <span className="md:hidden">打刻</span>
+            </a>
           </div>
         </header>
 
-        {/* カードグリッド */}
-        <div className="p-4 md:p-6">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
-            {/* 本日の勤務情報 */}
-            <div className="bg-white rounded-xl p-4 md:p-6 shadow-lg hover:shadow-xl transition-all duration-300 hover:transform hover:-translate-y-1">
-              <div className="flex items-center mb-4">
-                <div className="p-2 bg-blue-100 rounded-lg">
-                  <svg className="h-6 w-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2-2v2m8 0V6a2 2 0 012 2v6M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M8 6a2 2 0 00-2 2v6a2 2 0 002 2h8a2 2 0 002-2V8a2 2 0 00-2-2" />
-                  </svg>
-                </div>
-                <h3 className="ml-3 text-base md:text-lg font-semibold text-gray-900">本日の勤務情報</h3>
-              </div>
-              <div className="space-y-2">
-                {/* 勤務状況 */}
-                <div className="mb-3">
-                  <p className="text-gray-600">ステータス: 
-                    <span className={`font-medium ml-1 ${getWorkStatus().color}`}>
-                      {getWorkStatus().status}
+        {/* Dashboard Content */}
+        <div className="flex-1 overflow-y-auto p-6 md:p-8">
+          {/* Row 1: Main Status & Summary */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8 mb-8">
+            {/* Today's Status */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden flex flex-col h-full transform transition hover:-translate-y-1 hover:shadow-md duration-300">
+              <div className="p-6 flex-1">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-bold text-lg text-gray-800 flex items-center">
+                    <span className="w-2 h-6 bg-blue-500 rounded-full mr-3"></span>
+                    本日の勤務
+                    <span className="ml-3 text-sm font-normal text-gray-500">
+                      {currentTime.getMonth() + 1}/{currentTime.getDate()}({['日', '月', '火', '水', '木', '金', '土'][currentTime.getDay()]})
                     </span>
-                  </p>
+                  </h3>
                 </div>
 
-                {/* 打刻詳細 */}
-                {getAttendanceDetails().length > 0 && (
-                  <div className="space-y-1 mb-3">
-                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">打刻履歴</p>
-                    {getAttendanceDetails().map((detail, index) => (
-                      <div key={index} className="flex justify-between items-center text-sm">
-                        <span className={`font-medium ${detail.color}`}>{detail.label}</span>
-                        <span className="text-gray-600">{detail.time}</span>
+                {/* ステータスバッジ - 大きく目立つデザイン */}
+                <div className={`mb-4 p-3 rounded-xl text-center ${statusInfo.status === '公休日' ? 'bg-purple-100 border-2 border-purple-300' :
+                  statusInfo.status === '勤務中' ? 'bg-blue-100 border-2 border-blue-300' :
+                    statusInfo.status === '退勤済み' ? 'bg-green-100 border-2 border-green-300' :
+                      statusInfo.status === '勤務前' ? 'bg-gray-100 border-2 border-gray-300' :
+                        'bg-gray-100 border-2 border-gray-300'
+                  }`}>
+                  <span className={`text-lg font-bold ${statusInfo.status === '公休日' ? 'text-purple-700' :
+                    statusInfo.status === '勤務中' ? 'text-blue-700' :
+                      statusInfo.status === '退勤済み' ? 'text-green-700' :
+                        statusInfo.status === '勤務前' ? 'text-gray-600' :
+                          'text-gray-600'
+                    }`}>
+                    {statusInfo.status === '公休日' ? '🏖️ 公休日' :
+                      statusInfo.status === '勤務中' ? '💼 勤務中' :
+                        statusInfo.status === '退勤済み' ? '✅ 退勤済み' :
+                          statusInfo.status === '勤務前' ? '⏰ 勤務前' :
+                            statusInfo.status}
+                  </span>
+                </div>
+
+                {/* 勤務時間・勤務地情報 */}
+                {todayShift && (
+                  <div className="bg-blue-50/70 rounded-xl p-4 mb-4 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-600 flex items-center">
+                        <svg className="w-4 h-4 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        勤務時間
+                      </span>
+                      <span className="font-bold text-gray-800">
+                        {new Date(todayShift.startTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
+                        {' 〜 '}
+                        {new Date(todayShift.endTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                    {todayShift.location && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-gray-600 flex items-center">
+                          <svg className="w-4 h-4 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                          </svg>
+                          勤務地
+                        </span>
+                        <span className="font-bold text-gray-800">{todayShift.location}</span>
                       </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* シフト情報 */}
-                {shiftLoading ? (
-                  <p className="text-gray-500 text-sm">シフト情報読み込み中...</p>
-                ) : todayShift ? (
-                  <div className="space-y-1 pt-2 border-t border-gray-100">
-                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">予定シフト</p>
-                    <p className="text-sm text-gray-600">勤務時間: <span className="font-medium text-gray-900">{formatTime(todayShift.startTime)} - {formatTime(todayShift.endTime)}</span></p>
-                    <p className="text-sm text-gray-600">勤務地: <span className="font-medium text-gray-900">{todayShift.location}</span></p>
-                  </div>
-                ) : (
-                  <p className="text-gray-500 text-sm pt-2 border-t border-gray-100">本日のシフトは登録されていません</p>
-                )}
-              </div>
-            </div>
-
-            {/* 今月の勤怠サマリー */}
-            <div className="bg-white rounded-xl p-4 md:p-6 shadow-lg hover:shadow-xl transition-all duration-300 hover:transform hover:-translate-y-1">
-              <div className="flex items-center mb-4">
-                <div className="p-2 bg-green-100 rounded-lg">
-                  <svg className="h-6 w-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                  </svg>
-                </div>
-                <h3 className="ml-3 text-base md:text-lg font-semibold text-gray-900">今月の勤怠サマリー</h3>
-              </div>
-              <div className="space-y-2">
-                {summaryLoading ? (
-                  <p className="text-gray-500">読み込み中...</p>
-                ) : monthlySummary ? (
-                  <>
-                    <p className="text-gray-600">シフト登録日数: <span className="font-medium text-blue-600">{monthlySummary.scheduledWorkDays || 0}日</span></p>
-                    <p className="text-gray-600">総労働時間: <span className="font-medium text-gray-900">{monthlySummary.totalWorkHours || "0:00"}</span></p>
-                    <p className="text-gray-600">出勤日数: <span className="font-medium text-gray-900">{monthlySummary.workDays || 0}日</span></p>
-                    <p className="text-gray-600">遅刻回数: <span className="font-medium text-gray-900">{monthlySummary.lateCount || 0}回</span></p>
-                    <p className="text-gray-600">欠勤日数: <span className="font-medium text-red-600">{monthlySummary.absentDays || 0}日</span></p>
-                    {monthlySummary.error && (
-                      <p className="text-xs text-orange-600">⚠️ {monthlySummary.error}</p>
                     )}
-                  </>
-                ) : (
-                  <>
-                    <p className="text-gray-600">シフト登録日数: <span className="font-medium text-blue-600">0日</span></p>
-                    <p className="text-gray-600">総労働時間: <span className="font-medium text-gray-900">0:00</span></p>
-                    <p className="text-gray-600">出勤日数: <span className="font-medium text-gray-900">0日</span></p>
-                    <p className="text-gray-600">遅刻回数: <span className="font-medium text-gray-900">0回</span></p>
-                    <p className="text-gray-600">欠勤日数: <span className="font-medium text-red-600">0日</span></p>
-                    <p className="text-xs text-gray-500">データを取得できませんでした</p>
-                  </>
+                  </div>
                 )}
+
+                {/* 現在時刻 */}
+                <div className="flex flex-col items-center justify-center py-4 bg-gray-50 rounded-xl mb-4">
+                  <span className="text-gray-500 text-sm mb-1">現在の時刻</span>
+                  <span className="text-3xl font-bold text-gray-900 tracking-tight">
+                    {currentTime.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                  {todayAttendance && todayAttendance.some(a => a.type === 'CLOCK_IN') && (
+                    <span className="text-sm text-blue-600 font-medium mt-1">
+                      出勤: {getLatestClockInTime()} 〜
+                    </span>
+                  )}
+                </div>
+
+                {/* 打刻履歴 */}
+                <div className="space-y-3">
+                  {attendanceDetails.length > 0 ? (
+                    attendanceDetails.map((detail, index) => (
+                      <div key={index} className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-50 transition-colors">
+                        <div className="flex items-center">
+                          <div className={`w-7 h-7 rounded-full flex items-center justify-center mr-2 ${detail.bg} ${detail.color}`}>
+                            {detail.icon ||
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
+                                  d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                            }
+                          </div>
+                          <span className="text-sm text-gray-600">{detail.label}</span>
+                        </div>
+                        <span className="font-bold text-gray-800">{detail.time}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-center text-sm text-gray-400 py-2">本日の打刻はありません</p>
+                  )}
+                </div>
               </div>
             </div>
 
-            {/* クイックアクション */}
-            <div className="bg-white rounded-xl p-4 md:p-6 shadow-lg hover:shadow-xl transition-all duration-300 hover:transform hover:-translate-y-1">
-              <div className="flex items-center mb-4">
-                <div className="p-2 bg-purple-100 rounded-lg">
-                  <svg className="h-6 w-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                  </svg>
+            {/* Monthly Summary */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden flex flex-col h-full transform transition hover:-translate-y-1 hover:shadow-md duration-300">
+              <div className="p-6 flex-1">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="font-bold text-lg text-gray-800 flex items-center">
+                    <span className="w-2 h-6 bg-green-500 rounded-full mr-3"></span>
+                    月次サマリー
+                  </h3>
                 </div>
-                <h3 className="ml-3 text-base md:text-lg font-semibold text-gray-900">クイックアクション</h3>
-              </div>
-              <div className="space-y-2 md:space-y-3">
-{hasUserPageAccess(user, 'attendance') && (
-                  <a
-                    href="/attendance"
-                    className="block w-full text-center px-3 py-2 md:px-4 md:py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors text-sm md:text-base"
-                  >
-                    打刻する
-                  </a>
-                )}
-                {hasUserPageAccess(user, 'shiftRequest') && (
-                  <a
-                    href="/shift/request"
-                    className="block w-full text-center px-3 py-2 md:px-4 md:py-2 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 transition-colors text-sm md:text-base"
-                  >
-                    シフト申請
-                  </a>
-                )}
-                {hasUserPageAccess(user, 'expense') && (
-                  <a
-                    href="/expense"
-                    className="block w-full text-center px-3 py-2 md:px-4 md:py-2 bg-yellow-50 text-yellow-600 rounded-lg hover:bg-yellow-100 transition-colors text-sm md:text-base"
-                  >
-                    経費登録
-                  </a>
-                )}
+                <div className="space-y-6">
+                  <div>
+                    <div className="flex justify-between text-sm mb-1">
+                      <span className="text-gray-500">稼働日数</span>
+                      <span className="font-bold text-gray-800">{monthlySummary?.workDays || 0} / {monthlySummary?.scheduledWorkDays || 0}日</span>
+                    </div>
+                    <div className="w-full bg-gray-100 rounded-full h-2">
+                      <div className="bg-green-500 h-2 rounded-full" style={{ width: `${progressPercent}%` }}></div>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-gray-50 p-4 rounded-xl">
+                      <p className="text-xs text-gray-500 mb-1">遅刻</p>
+                      <p className="text-xl font-bold text-gray-900">{monthlySummary?.lateCount || 0} <span
+                        className="text-xs font-normal text-gray-400">回</span></p>
+                    </div>
+                    <div className="bg-gray-50 p-4 rounded-xl">
+                      <p className="text-xs text-gray-500 mb-1">欠勤</p>
+                      <p className="text-xl font-bold text-gray-900">{monthlySummary?.absentDays || 0} <span
+                        className="text-xs font-normal text-gray-400">回</span></p>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      </main>
-    </div>
+
+
+          {/* Row 2: Stats & Actions */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            {/* Upcoming Shifts - 今後の出勤予定 */}
+            <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+              <div className="flex items-center mb-4">
+                <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 mr-3">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
+                      d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                </div>
+                <p className="text-sm font-semibold text-gray-700">今後の出勤予定</p>
+              </div>
+              <div className="space-y-2">
+                {upcomingShifts.length > 0 ? (
+                  upcomingShifts.slice(0, 3).map((shift, index) => {
+                    const shiftDate = new Date(shift.date);
+                    const dayOfWeek = ['日', '月', '火', '水', '木', '金', '土'][shiftDate.getDay()];
+                    return (
+                      <div key={index} className="text-sm py-1.5 border-b border-gray-100 last:border-0">
+                        <div className="flex items-center justify-between">
+                          <span className="text-gray-700 font-medium">
+                            {shiftDate.getMonth() + 1}/{shiftDate.getDate()}({dayOfWeek})
+                          </span>
+                          <span className="text-gray-800 font-medium">
+                            {new Date(shift.startTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
+                            〜
+                            {new Date(shift.endTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                        {shift.location && (
+                          <div className="text-xs text-gray-500 mt-0.5 flex items-center">
+                            <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                            {shift.location}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                ) : (
+                  <p className="text-sm text-gray-400 text-center py-2">予定なし</p>
+                )}
+              </div>
+            </div>
+
+            {/* Expense */}
+            <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <div
+                    className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center text-orange-600">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
+                        d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                </div>
+                <p className="text-sm text-gray-500">今月の経費精算</p>
+              </div>
+              <p className="text-2xl font-bold text-gray-900 mt-1">¥ {monthlyExpense.toLocaleString()}</p>
+            </div>
+
+            {/* Quick Actions */}
+            <div className="bg-gradient-to-br from-purple-50 to-white rounded-2xl shadow-sm border border-purple-100 overflow-hidden flex flex-col h-full transform transition hover:-translate-y-1 hover:shadow-md duration-300">
+              <div className="p-6 flex-1">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-bold text-lg text-gray-800 flex items-center">
+                    <span className="w-2 h-6 bg-purple-500 rounded-full mr-3"></span>
+                    クイックアクション
+                  </h3>
+                </div>
+                <div className="grid grid-cols-1 gap-3">
+                  <a href="/attendance/history" className="flex items-center p-3.5 bg-white border border-purple-100 rounded-xl shadow-sm hover:shadow-md hover:border-purple-300 transition-all group">
+                    <div className="w-8 h-8 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center mr-3 group-hover:scale-110 transition-transform">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
+                          d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                    <div className="text-left">
+                      <span className="block text-sm font-bold text-gray-800">打刻履歴</span>
+                    </div>
+                  </a>
+                  <a href="/shift/request" className="flex items-center p-3.5 bg-white border border-green-100 rounded-xl shadow-sm hover:shadow-md hover:border-green-300 transition-all group">
+                    <div className="w-8 h-8 rounded-full bg-green-100 text-green-600 flex items-center justify-center mr-3 group-hover:scale-110 transition-transform">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
+                          d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                    </div>
+                    <div className="text-left">
+                      <span className="block text-sm font-bold text-gray-800">シフト申請</span>
+                    </div>
+                  </a>
+                  <a href="/expense/monthly" className="flex items-center p-3.5 bg-white border border-orange-100 rounded-xl shadow-sm hover:shadow-md hover:border-orange-300 transition-all group">
+                    <div className="w-8 h-8 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center mr-3 group-hover:scale-110 transition-transform">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
+                          d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                    <div className="text-left">
+                      <span className="block text-sm font-bold text-gray-800">経費精算</span>
+                    </div>
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div >
+      </main >
+    </div >
   );
 }

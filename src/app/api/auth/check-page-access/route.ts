@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
-import { hasPageAccess } from "@/lib/permissions";
+import { hasPageAccess, PageAccess } from "@/lib/permissions";
 
 export async function GET(request: Request) {
   try {
-    const currentUser = await getCurrentUser(request as any);
+    const currentUser = await getCurrentUser(request);
     
     if (!currentUser) {
       return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
@@ -17,10 +17,10 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "ページが指定されていません" }, { status: 400 });
     }
 
-    const hasAccess = await hasPageAccess(currentUser.id, page as any);
+    const hasAccess = await hasPageAccess(currentUser.id, page as keyof PageAccess);
     
     return NextResponse.json({ hasAccess });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("ページアクセス確認エラー:", error);
     return NextResponse.json(
       { error: "アクセス権限の確認に失敗しました" },

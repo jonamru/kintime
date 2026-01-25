@@ -10,7 +10,7 @@ export async function GET() {
     });
 
     return NextResponse.json(projects);
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("案件取得エラー:", error);
     return NextResponse.json(
       { error: "案件の取得に失敗しました" },

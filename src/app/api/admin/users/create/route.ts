@@ -31,6 +31,7 @@ export async function POST(request: Request) {
       gpsEnabled,
       wakeUpEnabled,
       departureEnabled,
+      isActive,
     } = await request.json();
 
     // 必須フィールドの検証
@@ -55,7 +56,7 @@ export async function POST(request: Request) {
 
     // ユーザーIDの処理
     let finalUserId = userId;
-    
+
     if (!userId || !userId.trim() || userId.includes('XXXX')) {
       // ユーザーIDが未入力、または自動生成プレースホルダーの場合は自動生成
       const { generateUserId } = await import("@/lib/userIdGenerator");
@@ -92,6 +93,7 @@ export async function POST(request: Request) {
         gpsEnabled: gpsEnabled ?? true,
         wakeUpEnabled: wakeUpEnabled ?? false,
         departureEnabled: departureEnabled ?? false,
+        isActive: isActive ?? true,
         managers: managerIds && managerIds.length > 0 ? {
           connect: managerIds.map((id: string) => ({ id }))
         } : undefined,

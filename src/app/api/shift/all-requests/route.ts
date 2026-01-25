@@ -38,7 +38,7 @@ export async function GET(request: Request) {
     });
 
     return NextResponse.json(shiftRequests);
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("全シフト希望取得エラー:", error);
     return NextResponse.json(
       { error: "シフト希望の取得に失敗しました" },

@@ -36,7 +36,7 @@ export async function GET(request: Request) {
     });
 
     return NextResponse.json(shifts);
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("シフト取得エラー:", error);
     return NextResponse.json(
       { error: "シフトの取得に失敗しました" },
@@ -103,7 +103,7 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json(shift);
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("シフト作成エラー:", error);
     console.error("エラー詳細:", {
       name: error instanceof Error ? error.name : 'Unknown',

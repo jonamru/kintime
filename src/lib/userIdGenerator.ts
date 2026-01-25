@@ -21,8 +21,14 @@ export async function generateUserId(partnerId?: string): Promise<string> {
 
     prefix = partner.userIdPrefix;
   } else {
-    // 自社の場合、デフォルトプレフィックス "ADST" を使用
-    prefix = "ADST";
+    // 自社の場合、SystemSettingからプレフィックスを取得
+    const systemSetting = await prisma.systemSetting.findFirst();
+    if (systemSetting?.companyUserIdPrefix) {
+      prefix = systemSetting.companyUserIdPrefix;
+    } else {
+      // 設定がない場合はデフォルト値を使用
+      prefix = "STFF";
+    }
   }
 
   // 同じプレフィックスを持つ最大の番号を取得
@@ -52,7 +58,7 @@ export async function generateUserId(partnerId?: string): Promise<string> {
 
   // 7桁でゼロパディング
   const paddedNumber = nextNumber.toString().padStart(7, '0');
-  
+
   return `${prefix}${paddedNumber}`;
 }
 
@@ -66,7 +72,7 @@ export async function checkPrefixDuplicate(prefix: string, excludePartnerId?: st
     if (systemSetting && systemSetting.companyUserIdPrefix === prefix) {
       return true;
     }
-  } catch (error) {
+  } catch (error: unknown) {
     console.log("SystemSetting table not found, skipping system prefix check:", error);
   }
 
@@ -80,7 +86,7 @@ export async function checkPrefixDuplicate(prefix: string, excludePartnerId?: st
     });
 
     return !!partner;
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("Error checking partner prefix:", error);
     return false;
   }

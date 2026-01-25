@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { getCurrentUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions";
+import type { User, Attendance, Shift, Expense, CustomRole, Partner, ApiResponse, BulkEditPermissions } from "@/types/common";
+import { Prisma } from "@prisma/client";
 
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -33,15 +35,33 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       gpsEnabled,
       wakeUpEnabled,
       departureEnabled,
+      isActive,
     } = await request.json();
 
-    // 対象ユーザーの存在確認
+    // 対象ユーザーの存在確認（パートナー情報も含める）
     const existingUser = await prisma.user.findUnique({
-      where: { id }
+      where: { id },
+      include: {
+        partner: {
+          select: {
+            id: true,
+            isActive: true,
+            name: true,
+          }
+        }
+      }
     });
 
     if (!existingUser) {
       return NextResponse.json({ error: "ユーザーが見つかりません" }, { status: 404 });
+    }
+
+    // パートナー企業が非アクティブな場合は編集を禁止
+    if (existingUser.partner && existingUser.partner.isActive === false) {
+      return NextResponse.json(
+        { error: `所属企業「${existingUser.partner.name}」が非アクティブのため、このユーザーは編集できません` },
+        { status: 403 }
+      );
     }
 
     // 必須フィールドの検証
@@ -81,17 +101,18 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     }
 
     // 更新データの準備
-    const updateData: any = {
+    const updateData: Prisma.UserUpdateInput = {
       userId: userId || null,
       name,
       email,
-      customRoleId: customRoleId,
-      partnerId: partnerId || null,
+      customRole: { connect: { id: customRoleId } },
+      partner: partnerId ? { connect: { id: partnerId } } : { disconnect: true },
       birthDate: birthDate ? new Date(birthDate) : null,
       defaultLocation: defaultLocation || null,
       gpsEnabled: gpsEnabled ?? true,
       wakeUpEnabled: wakeUpEnabled ?? false,
       departureEnabled: departureEnabled ?? false,
+      isActive: isActive ?? undefined,
     };
 
     // 管理者の関連付けを更新
@@ -127,7 +148,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     const { password: _, ...userResponse } = updatedUser;
 
     return NextResponse.json(userResponse);
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("ユーザー更新エラー:", error);
     return NextResponse.json(
       { error: "ユーザー情報の更新に失敗しました" },
@@ -174,7 +195,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
         where: { userId: id },
         select: { id: true }
       });
-      
+
       if (attendances.length > 0) {
         await tx.correction.deleteMany({
           where: {
@@ -205,6 +226,11 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
         where: { userId: id }
       });
 
+      // 経費登録ロックを削除
+      await tx.expenseRegistrationLock.deleteMany({
+        where: { userId: id }
+      });
+
       // 定期券を削除
       await tx.commutePass.deleteMany({
         where: { userId: id }
@@ -215,6 +241,26 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
         where: { userId: id }
       });
 
+      // 他のユーザーの経費ロックを解除（このユーザーがロックしていた場合）
+      await tx.expense.updateMany({
+        where: { lockedBy: id },
+        data: {
+          lockedBy: null,
+          isLocked: false,
+          lockedAt: null
+        }
+      });
+
+      // 他のユーザーの定期券ロックを解除（このユーザーがロックしていた場合）
+      await tx.commutePass.updateMany({
+        where: { lockedBy: id },
+        data: {
+          lockedBy: null,
+          isLocked: false,
+          lockedAt: null
+        }
+      });
+
       // 最後にユーザーを削除
       await tx.user.delete({
         where: { id }
@@ -222,7 +268,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     });
 
     return NextResponse.json({ message: "ユーザーを削除しました" });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("ユーザー削除エラー:", error);
     return NextResponse.json(
       { error: "ユーザーの削除に失敗しました" },

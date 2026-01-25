@@ -5,6 +5,18 @@ import { hasPermission } from '@/lib/permissions'
 import { formatJapanDate } from '@/lib/dateUtils'
 import * as XLSX from 'xlsx'
 
+interface AttendanceRecord {
+  date: string;
+  dayOfWeek: string;
+  status: string;
+  workplace: string;
+  startTime: string;
+  endTime: string;
+  breakTime?: string;
+  actualWorkHours?: string;
+  [key: string]: string | undefined;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const currentUser = await getCurrentUser(request)
@@ -142,7 +154,7 @@ export async function GET(request: NextRequest) {
       let workplace = '-'
       let startTime = ''
       let endTime = ''
-      let alerts: string[] = []
+      const alerts: string[] = []
 
       if (shift) {
         // シフトがある場合は基本的に出勤
@@ -195,7 +207,7 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      const record: any = {
+      const record: AttendanceRecord = {
         date: `${year}/${monthNum}/${day}`,
         dayOfWeek,
         status,
@@ -229,17 +241,17 @@ export async function GET(request: NextRequest) {
 
       if (type === 'full' || type === 'submission_with_expenses') {
         // 経費データは常に追加（提出用で交通費含む場合も必要）
-        record.expenses = dayExpenses
+        record.expenses = dayExpenses.toString()
         
         if (type === 'full') {
           record.wakeupReport = wakeupRecord ? 
-            new Date(wakeupRecord.clockTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }) : null
+            new Date(wakeupRecord.clockTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }) : undefined
           record.departureReport = departureRecord ?
-            new Date(departureRecord.clockTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }) : null
+            new Date(departureRecord.clockTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }) : undefined
           record.clockIn = clockInRecord ?
-            new Date(clockInRecord.clockTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' }) : null
+            new Date(clockInRecord.clockTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' }) : undefined
           record.clockOut = clockOutRecord ?
-            new Date(clockOutRecord.clockTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' }) : null
+            new Date(clockOutRecord.clockTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' }) : undefined
           if (clockOutRecord && clockInRecord && shift) {
             const totalMinutes = (new Date(clockOutRecord.clockTime).getTime() - new Date(clockInRecord.clockTime).getTime()) / (1000 * 60)
             const actualWorkMinutes = totalMinutes - (shift.breakTime || 0)
@@ -247,9 +259,9 @@ export async function GET(request: NextRequest) {
             const minutes = Math.floor(actualWorkMinutes % 60)
             record.workHours = `${hours}:${minutes.toString().padStart(2, '0')}`
           } else {
-            record.workHours = null
+            record.workHours = undefined
           }
-          record.alerts = alerts
+          record.alerts = alerts.join(', ')
         }
       }
 
@@ -330,7 +342,7 @@ export async function GET(request: NextRequest) {
               record.clockIn || '-',
               record.clockOut || '-',
               record.workHours || '-',
-              record.alerts?.join(', ') || '-',
+              record.alerts || '-',
               record.expenses ? `¥${record.expenses.toLocaleString()}` : '-'
             ]
           }
@@ -407,7 +419,7 @@ export async function GET(request: NextRequest) {
             record.clockIn || '-',
             record.clockOut || '-',
             record.workHours || '-',
-            record.alerts?.join(', ') || '-',
+            record.alerts || '-',
             record.expenses ? `¥${record.expenses.toLocaleString()}` : '-'
           ]
           csvContent += row.map(field => `"${field}"`).join(',') + '\n'
@@ -563,7 +575,7 @@ export async function GET(request: NextRequest) {
                 record.clockIn || '-',
                 record.clockOut || '-',
                 record.workHours || '-',
-                (record.alerts || []).join(', ') || '-',
+                record.alerts || '-',
                 record.expenses ? `¥${record.expenses.toLocaleString()}` : '-'
               ]
           
@@ -603,7 +615,7 @@ export async function GET(request: NextRequest) {
         
         const fileName = `勤務管理表_${user.name}(${user.userId || user.id})_${month}.pdf`
         
-        return new NextResponse(pdfBuffer, {
+        return new NextResponse(Buffer.from(pdfBuffer), {
           headers: {
             'Content-Type': 'application/pdf',
             'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`
@@ -621,7 +633,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ error: 'サポートされていない形式です' }, { status: 400 })
 
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Attendance report error:', error)
     return NextResponse.json({ 
       error: 'レポートの生成に失敗しました',

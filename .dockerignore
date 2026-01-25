@@ -1,0 +1,127 @@
+# Dependencies
+node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Next.js build output
+.next
+out
+
+# Production build
+build
+dist
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# Logs
+logs
+*.log
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage
+
+# nyc test coverage
+.nyc_output
+
+# Dependency directories
+node_modules/
+jspm_packages/
+
+# Optional npm cache directory
+.npm
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# Docker files (avoid recursive copying)
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# Git
+.git
+.gitignore
+
+# Documentation
+README.md
+*.md
+
+# Test files
+test/
+tests/
+**/*.test.js
+**/*.spec.js
+
+# Certificates
+certificates/
+*.pem
+*.crt
+*.key
+
+# Temporary files
+tmp/
+temp/
+
+# Prisma
+prisma/migrations/
+.env
+
+# Development scripts
+scripts/
+debug-*.js
+check-*.js
+migrate-*.ts
+
+# Development database files
+*.db
+*.sqlite
+
+# PM2
+ecosystem.config.js
+
+# Nginx config (will be mounted as volume)
+nginx/
+
+# SSL certificates
+ssl/
+
+# Backup files
+backup/
+*.backup
+
+# Development tools
+tsconfig.tsbuildinfo

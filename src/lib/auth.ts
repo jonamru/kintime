@@ -14,8 +14,8 @@ export interface AuthUser {
     id: string;
     name: string;
     displayName: string;
-    permissions: any;
-    pageAccess: any;
+    permissions: Record<string, unknown>;
+    pageAccess: Record<string, unknown>;
   };
   partnerId?: string;
   partner?: {
@@ -26,6 +26,7 @@ export interface AuthUser {
   wakeUpEnabled: boolean;
   departureEnabled: boolean;
   defaultLocation?: string;
+  isActive: boolean;
 }
 
 // ユーザーキャッシュ（5分間）
@@ -36,7 +37,7 @@ export async function getCurrentUser(request: NextRequest | Request): Promise<Au
   try {
     // クッキーからトークンを取得
     let token: string | undefined;
-    
+
     if ('cookies' in request) {
       // NextRequest の場合
       token = request.cookies.get("auth-token")?.value;
@@ -54,18 +55,21 @@ export async function getCurrentUser(request: NextRequest | Request): Promise<Au
     }
 
     // トークンを検証
-    const decoded = jwt.verify(token, JWT_SECRET_STRING) as any;
+    const decoded = jwt.verify(token, JWT_SECRET_STRING) as jwt.JwtPayload;
     const userId = decoded.userId;
-    
+
     // キャッシュから取得を試行
     const cacheKey = `user:${userId}`;
     const cached = userCache.get(cacheKey);
     const now = Date.now();
-    
+
     if (cached && cached.expiry > now) {
+      // console.log(`[Auth Debug] Cache HIT for user ${userId}`);
       return cached.user;
     }
-    
+
+    // console.log(`[Auth Debug] Cache MISS for user ${userId}. Fetching from DB...`);
+
     // キャッシュにないまたは期限切れの場合、DBから取得
     const user = await prisma.user.findUnique({
       where: { id: userId },
@@ -89,31 +93,40 @@ export async function getCurrentUser(request: NextRequest | Request): Promise<Au
     });
 
     if (!user || !user.customRole) {
+      // console.log(`[Auth Debug] User or CustomRole not found for ${userId}`);
       return null;
     }
+
+    if (user.isActive === false) {
+      // console.log(`[Auth Debug] User ${userId} is inactive`);
+      return null;
+    }
+
+    // console.log(`[Auth Debug] DB Fetch success.`);
 
     const authUser: AuthUser = {
       id: user.id,
       userId: user.userId || undefined,
       email: user.email,
       name: user.name,
-      customRole: user.customRole,
+      customRole: user.customRole as unknown as AuthUser['customRole'],
       partnerId: user.partnerId || undefined,
       partner: user.partner || undefined,
       gpsEnabled: user.gpsEnabled,
       wakeUpEnabled: user.wakeUpEnabled,
       departureEnabled: user.departureEnabled,
       defaultLocation: user.defaultLocation || undefined,
+      isActive: user.isActive,
     };
-    
+
     // キャッシュに保存
     userCache.set(cacheKey, {
       user: authUser,
       expiry: now + CACHE_DURATION
     });
-    
+
     return authUser;
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("認証エラー:", error);
     return null;
   }
@@ -122,7 +135,7 @@ export async function getCurrentUser(request: NextRequest | Request): Promise<Au
 export function verifyToken(token: string) {
   try {
     return jwt.verify(token, JWT_SECRET_STRING);
-  } catch (error) {
+  } catch {
     return null;
   }
 }
@@ -136,17 +149,17 @@ export function canAccessPartnerData(userRole: string, userPartnerId?: string, t
   if (userRole === 'SUPER_ADMIN') {
     return true;
   }
-  
+
   // マネージャーは自社のデータのみアクセス可能
   if (userRole === 'MANAGER') {
     return !targetPartnerId || userPartnerId === targetPartnerId;
   }
-  
+
   // パートナー管理者は自社のデータのみアクセス可能
   if (userRole === 'PARTNER_MANAGER') {
     return userPartnerId === targetPartnerId;
   }
-  
+
   // スタッフは自分のデータのみアクセス可能
   return false;
 }

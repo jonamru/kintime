@@ -3,12 +3,28 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions";
 import { formatJapanDateTime } from "@/lib/dateUtils";
+import { ShiftType, ShiftStatus } from "@prisma/client";
+
+// 型ガード関数
+const isShiftType = (value: string): value is ShiftType => {
+  return Object.values(ShiftType).includes(value as ShiftType);
+};
+
+interface ShiftData {
+  date: string;
+  startTime: string;
+  endTime: string;
+  shiftType: string; // APIからは文字列で受け取る
+  location: string;
+  breakTime: number;
+  note?: string;
+}
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
     const { userId, shifts: initialShifts } = body;
-    let shifts = initialShifts;
+    let shifts: ShiftData[] = initialShifts;
     const originalShiftCount = shifts ? shifts.length : 0;
 
     // 認証チェック
@@ -71,7 +87,7 @@ export async function POST(request: Request) {
         const date = shift.date;
         return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
       });
-      const validShifts = shifts.filter(shift => 
+      const validShifts: ShiftData[] = shifts.filter(shift => 
         !existingDates.includes(shift.date)
       );
 
@@ -87,12 +103,22 @@ export async function POST(request: Request) {
     }
 
     // 一括作成用のデータ準備
-    const shiftsToCreate = shifts.map(shiftData => {
+    const shiftsToCreate = shifts.map((shiftData: ShiftData) => {
       // 日付文字列から年月日を直接パース
       const [year, month, day] = shiftData.date.split('-').map(Number);
       const localDate = new Date(year, month - 1, day);
-      const startDateTime = new Date(year, month - 1, day, ...shiftData.startTime.split(':').map(Number));
-      const endDateTime = new Date(year, month - 1, day, ...shiftData.endTime.split(':').map(Number));
+      
+      // 時間を個別に分割（スプレッド演算子は使わない）
+      const [startHour, startMinute] = shiftData.startTime.split(':').map(Number);
+      const [endHour, endMinute] = shiftData.endTime.split(':').map(Number);
+      
+      const startDateTime = new Date(year, month - 1, day, startHour, startMinute);
+      const endDateTime = new Date(year, month - 1, day, endHour, endMinute);
+      
+      // ShiftTypeの検証
+      if (!isShiftType(shiftData.shiftType)) {
+        throw new Error(`無効なシフトタイプ: ${shiftData.shiftType}`);
+      }
 
       return {
         userId: userId,
@@ -100,10 +126,10 @@ export async function POST(request: Request) {
         startTime: startDateTime,
         endTime: endDateTime,
         breakTime: shiftData.breakTime ?? 60,
-        shiftType: shiftData.shiftType,
+        shiftType: shiftData.shiftType as ShiftType, // 型ガード後なので安全にキャスト
         location: shiftData.location,
         note: shiftData.note || null,
-        status: "APPROVED", // 管理者登録は即座に確定
+        status: ShiftStatus.APPROVED, // enum値を使用
       };
     });
 
@@ -119,7 +145,7 @@ export async function POST(request: Request) {
             shiftType: shiftData.shiftType,
             location: shiftData.location,
             note: shiftData.note,
-            status: "APPROVED" as any,
+            status: ShiftStatus.APPROVED,
             user: {
               connect: { id: shiftData.userId }
             }
@@ -135,13 +161,24 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     console.error("管理者シフト登録エラー:", error);
-    console.error("エラー詳細:", {
-      name: (error as any)?.name,
-      message: (error as any)?.message,
-      stack: (error as any)?.stack
-    });
+    
+    // エラーの詳細をログ出力
+    if (error instanceof Error) {
+      console.error("エラー詳細:", {
+        name: error.name,
+        message: error.message,
+        stack: error.stack
+      });
+      
+      return NextResponse.json(
+        { error: "シフト登録に失敗しました", details: error.message },
+        { status: 500 }
+      );
+    }
+    
+    // Errorインスタンスでない場合
     return NextResponse.json(
-      { error: "シフト登録に失敗しました", details: (error as any)?.message },
+      { error: "シフト登録に失敗しました" },
       { status: 500 }
     );
   }

@@ -3,7 +3,7 @@ import { getCurrentUser } from "@/lib/auth";
 
 export async function GET(request: Request) {
   try {
-    const user = await getCurrentUser(request as any);
+    const user = await getCurrentUser(request);
     
     if (!user) {
       return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
@@ -22,7 +22,7 @@ export async function GET(request: Request) {
       departureEnabled: user.departureEnabled,
       defaultLocation: user.defaultLocation,
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("ユーザー設定取得エラー:", error);
     return NextResponse.json(
       { 

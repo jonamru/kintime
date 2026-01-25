@@ -39,7 +39,7 @@ export async function GET(request: Request) {
     });
 
     return NextResponse.json(shiftRequests);
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("シフト希望取得エラー:", error);
     return NextResponse.json(
       { error: "シフト希望の取得に失敗しました" },
@@ -101,7 +101,7 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json(shiftRequest);
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("シフト希望更新エラー:", error);
     return NextResponse.json(
       { error: "シフト希望の更新に失敗しました" },

@@ -16,15 +16,15 @@ try {
   const command = `openssl req -x509 -out ${certDir}/cert.pem -keyout ${certDir}/key.pem \
     -newkey rsa:2048 -nodes -sha256 \
     -subj "/CN=localhost" -extensions EXT -config <( \
-    printf "[dn]\nCN=localhost\n[req]\ndistinguished_name = dn\n[EXT]\nsubjectAltName=DNS:localhost,IP:127.0.0.1,IP:172.16.0.6\nkeyUsage=digitalSignature\nextendedKeyUsage=serverAuth")`;
+    printf "[dn]\nCN=localhost\n[req]\ndistinguished_name = dn\n[EXT]\nsubjectAltName=DNS:localhost,IP:127.0.0.1,IP:192.168.3.25\nkeyUsage=digitalSignature\nextendedKeyUsage=serverAuth")`;
 
   execSync(command, { shell: '/bin/bash', stdio: 'inherit' });
-  
+
   console.log('✅ 証明書の生成が完了しました！');
   console.log(`📁 証明書の場所: ${certDir}`);
   console.log('\n次のコマンドでHTTPSサーバーを起動できます:');
   console.log('npm run dev:https');
-  
+
 } catch (error) {
   console.error('❌ 証明書の生成に失敗しました:', error.message);
   console.log('\n代替方法:');

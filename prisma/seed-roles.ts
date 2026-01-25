@@ -58,6 +58,7 @@ async function seedRoles() {
         adminPartners: true,
         adminSystemSettings: true,
         adminSystem: true, // 新しい管理ページ
+        expenseLock: true,
       },
     },
     {
@@ -111,6 +112,7 @@ async function seedRoles() {
         adminPartners: false,
         adminSystemSettings: true,
         adminSystem: false,
+        expenseLock: false,
       },
     },
     {
@@ -164,6 +166,7 @@ async function seedRoles() {
         adminPartners: false,
         adminSystemSettings: false,
         adminSystem: false,
+        expenseLock: false,
       },
     },
   ];

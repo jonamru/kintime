@@ -8,7 +8,7 @@ export async function POST(request: Request) {
   try {
     const { attendanceId, isUndo } = await request.json();
     
-    const currentUser = await getCurrentUser(request as any);
+    const currentUser = await getCurrentUser(request);
     
     if (!currentUser) {
       return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
@@ -71,7 +71,7 @@ export async function POST(request: Request) {
         ? "打刻を取り消しました" 
         : `${attendance.user.name}さんの打刻記録を削除しました`,
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("打刻削除エラー:", error);
     return NextResponse.json(
       { error: "打刻削除に失敗しました" },
@@ -87,13 +87,13 @@ export async function DELETE(request: Request) {
     try {
       const body = await request.json();
       attendanceId = body.id;
-    } catch {
+    } catch (error) {
       // フォールバック：クエリパラメータから取得
       const { searchParams } = new URL(request.url);
       attendanceId = searchParams.get('id') || '';
     }
 
-    const currentUser = await getCurrentUser(request as any);
+    const currentUser = await getCurrentUser(request);
     
     if (!currentUser) {
       return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
@@ -187,7 +187,7 @@ export async function DELETE(request: Request) {
     return NextResponse.json({
       message: `${attendance.user.name}さんの打刻記録を削除しました`,
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("打刻削除エラー:", error);
     return NextResponse.json(
       { error: "打刻削除に失敗しました" },

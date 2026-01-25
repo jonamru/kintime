@@ -22,8 +22,12 @@ export async function GET(request: Request) {
       orderBy: { name: 'asc' }
     });
 
-    return NextResponse.json(partners);
-  } catch (error) {
+    console.log(`パートナー全件取得: ${partners.length}件 (User: ${currentUser.id})`);
+
+    const response = NextResponse.json(partners);
+    response.headers.set('Cache-Control', 'no-store, max-age=0');
+    return response;
+  } catch (error: unknown) {
     console.error("パートナー取得エラー:", error);
     return NextResponse.json(
       { error: "パートナー情報の取得に失敗しました" },

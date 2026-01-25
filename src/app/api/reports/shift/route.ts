@@ -4,6 +4,14 @@ import { getCurrentUser } from '@/lib/auth'
 import { hasPermission } from '@/lib/permissions'
 import { formatJapanDate } from '@/lib/dateUtils'
 import * as XLSX from 'xlsx'
+import type { User } from '@/types/common'
+
+// レポート用の限定的なユーザー型定義
+type ReportUser = Pick<User, 'id' | 'name'> & {
+  userId: string | null;
+  defaultLocation: string | null;
+  partner: { name: string } | null;
+};
 
 export async function GET(request: NextRequest) {
   try {
@@ -39,7 +47,8 @@ export async function GET(request: NextRequest) {
     // 権限チェック
     const canViewAll = await hasPermission(currentUser.id, 'shiftManagement', 'viewAll')
     const canViewCompany = await hasPermission(currentUser.id, 'shiftManagement', 'view')
-    
+    const canViewAssigned = await hasPermission(currentUser.id, 'shiftManagement', 'viewAssigned')
+
     if (scope === 'all' && !canViewAll) {
       return NextResponse.json({ error: '全員のシフトを閲覧する権限がありません' }, { status: 403 })
     }
@@ -49,18 +58,18 @@ export async function GET(request: NextRequest) {
     const endDate = new Date(year, monthNum, 0)
 
     // 対象ユーザーを取得
-    let users: any[] = []
+    let users: ReportUser[] = []
     if (scope === 'user') {
       const targetUserIds = userIds.length > 0 ? userIds : (userId ? [userId] : [])
-      
+
       // 権限チェック - 自分以外のユーザーが含まれている場合
       const hasOtherUsers = targetUserIds.some(id => id !== currentUser.id)
-      if (hasOtherUsers && !canViewAll && !canViewCompany) {
+      if (hasOtherUsers && !canViewAll && !canViewCompany && !canViewAssigned) {
         return NextResponse.json({ error: '権限がありません' }, { status: 403 })
       }
-      
+
       users = await prisma.user.findMany({
-        where: { 
+        where: {
           id: { in: targetUserIds }
         },
         select: {
@@ -74,19 +83,22 @@ export async function GET(request: NextRequest) {
         },
         orderBy: { name: 'asc' }
       })
-      
+
       if (users.length === 0) {
         return NextResponse.json({ error: 'ユーザーが見つかりません' }, { status: 404 })
       }
-      
+
     } else if (scope === 'company') {
       if (!canViewAll && !canViewCompany) {
         return NextResponse.json({ error: '権限がありません' }, { status: 403 })
       }
-      
+
+      // 'self' means the user's own company (currentUser.partnerId), not necessarily the main company (null)
+      const targetPartnerId = partnerId === 'self' ? currentUser.partnerId : partnerId
+
       users = await prisma.user.findMany({
         where: {
-          partnerId: partnerId === 'self' ? null : partnerId
+          partnerId: targetPartnerId
         },
         select: {
           id: true,
@@ -99,7 +111,7 @@ export async function GET(request: NextRequest) {
         },
         orderBy: { name: 'asc' }
       })
-      
+
     } else if (scope === 'all') {
       users = await prisma.user.findMany({
         select: {
@@ -139,7 +151,7 @@ export async function GET(request: NextRequest) {
 
     // 月の全日付を生成
     const daysInMonth = endDate.getDate()
-    const dates = []
+    const dates: { date: string; day: number; dayOfWeek: string }[] = []
     for (let day = 1; day <= daysInMonth; day++) {
       const date = new Date(year, monthNum - 1, day)
       dates.push({
@@ -157,15 +169,15 @@ export async function GET(request: NextRequest) {
         return {
           ...dateInfo,
           shift: dayShift ? {
-            startTime: new Date(dayShift.startTime).toLocaleTimeString('ja-JP', { 
-              hour: '2-digit', 
+            startTime: new Date(dayShift.startTime).toLocaleTimeString('ja-JP', {
+              hour: '2-digit',
               minute: '2-digit',
-              timeZone: 'Asia/Tokyo' 
+              timeZone: 'Asia/Tokyo'
             }),
-            endTime: new Date(dayShift.endTime).toLocaleTimeString('ja-JP', { 
-              hour: '2-digit', 
+            endTime: new Date(dayShift.endTime).toLocaleTimeString('ja-JP', {
+              hour: '2-digit',
               minute: '2-digit',
-              timeZone: 'Asia/Tokyo' 
+              timeZone: 'Asia/Tokyo'
             }),
             location: dayShift.location,
             shiftType: dayShift.shiftType
@@ -218,10 +230,10 @@ export async function GET(request: NextRequest) {
     // Excel出力
     if (format === 'excel') {
       const workbook = XLSX.utils.book_new()
-      
+
       // ヘッダー行を作成
       const headerRow = ['氏名', '稼働先', ...dates.map(d => `${d.day}日(${d.dayOfWeek})`)]
-      
+
       const worksheetData = [
         [`シフト表 - ${month}`],
         [`対象: ${getScopeDisplayText()}`],
@@ -240,10 +252,10 @@ export async function GET(request: NextRequest) {
       ]
 
       const worksheet = XLSX.utils.aoa_to_sheet(worksheetData)
-      
+
       // 土日のセルに色を付ける
       const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1')
-      
+
       // ヘッダー行の土日セルに色付け（4行目がヘッダー）
       dates.forEach((dateInfo, index) => {
         if (isWeekend(dateInfo.dayOfWeek)) {
@@ -257,7 +269,7 @@ export async function GET(request: NextRequest) {
           }
         }
       })
-      
+
       // データ行の土日セルに色付け
       shiftData.forEach((userData, userIndex) => {
         userData.shifts.forEach((dayShift, dayIndex) => {
@@ -273,13 +285,13 @@ export async function GET(request: NextRequest) {
           }
         })
       })
-      
+
       XLSX.utils.book_append_sheet(workbook, worksheet, 'シフト表')
-      
+
       const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' })
-      
+
       const fileName = `シフト表_${getScopeDisplayText()}_${month}.xlsx`
-      
+
       return new NextResponse(buffer, {
         headers: {
           'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -291,7 +303,7 @@ export async function GET(request: NextRequest) {
     // CSV出力
     if (format === 'csv') {
       const headerRow = ['氏名', '稼働先', ...dates.map(d => `${d.day}日(${d.dayOfWeek})`)]
-      
+
       const csvData = [
         headerRow,
         ...shiftData.map(userData => [
@@ -305,16 +317,16 @@ export async function GET(request: NextRequest) {
           })
         ])
       ]
-      
-      const csvContent = csvData.map(row => 
+
+      const csvContent = csvData.map(row =>
         row.map(field => `"${String(field).replace(/"/g, '""')}"`).join(',')
       ).join('\n')
-      
+
       const bom = '\uFEFF'
       const csvBuffer = Buffer.from(bom + csvContent, 'utf8')
-      
+
       const fileName = `シフト表_${getScopeDisplayText()}_${month}.csv`
-      
+
       return new NextResponse(csvBuffer, {
         headers: {
           'Content-Type': 'text/csv; charset=utf-8',
@@ -327,12 +339,12 @@ export async function GET(request: NextRequest) {
     if (format === 'pdf') {
       try {
         const puppeteer = await import('puppeteer')
-        
+
         // 縦向きの場合、ユーザー列幅を計算（A4縦向き: 約560px有効幅）
         const userColumnCount = shiftData.length
         const availableWidthPortrait = 560 - 80 // 80px for date column
         const userColumnWidth = userColumnCount > 0 ? Math.max(40, Math.floor(availableWidthPortrait / userColumnCount)) : 40
-        
+
         // 横向きの場合、日付列幅を計算（A4横向き: 約1120px有効幅）
         const dateColumnCount = dates.length
         const availableWidthLandscape = 1120 - 120 - 80 // 120px for name, 80px for company
@@ -441,17 +453,17 @@ export async function GET(request: NextRequest) {
                   <tr>
                     <td class="date-col ${isWeekend(dateInfo.dayOfWeek) ? 'weekend' : ''}">${dateInfo.day}日(${dateInfo.dayOfWeek})</td>
                     ${shiftData.map(userData => {
-                      const dayShift = userData.shifts.find(s => s.day === dateInfo.day)
-                      let content = ''
-                      if (dayShift && dayShift.shift) {
-                        content = showLocation ? 
-                          `${dayShift.shift.startTime}<br/><span style="font-size: 9px; color: #666;">${dayShift.shift.location}</span>` : 
-                          dayShift.shift.startTime
-                      } else {
-                        content = '<span style="font-size: 10px; color: #999;">公休</span>'
-                      }
-                      return `<td class="user-col ${isWeekend(dateInfo.dayOfWeek) ? 'weekend' : ''}" style="font-size: 12px; font-weight: bold;">${content}</td>`
-                    }).join('')}
+          const dayShift = userData.shifts.find(s => s.day === dateInfo.day)
+          let content = ''
+          if (dayShift && dayShift.shift) {
+            content = showLocation ?
+              `${dayShift.shift.startTime}<br/><span style="font-size: 9px; color: #666;">${dayShift.shift.location}</span>` :
+              dayShift.shift.startTime
+          } else {
+            content = '<span style="font-size: 10px; color: #999;">公休</span>'
+          }
+          return `<td class="user-col ${isWeekend(dateInfo.dayOfWeek) ? 'weekend' : ''}" style="font-size: 12px; font-weight: bold;">${content}</td>`
+        }).join('')}
                   </tr>
                 `).join('')}
               </tbody>
@@ -567,16 +579,16 @@ export async function GET(request: NextRequest) {
                     <td class="name-col">${userData.user.name}<br/>(${userData.user.userId})<br/>${userData.user.company}</td>
                     <td class="company-col">${userData.user.workLocation}</td>
                     ${userData.shifts.map(dayShift => {
-                      let content = ''
-                      if (dayShift.shift) {
-                        content = showLocation ? 
-                          `${dayShift.shift.startTime}<br/><span style="font-size: 7px; color: #666;">${dayShift.shift.location}</span>` : 
-                          dayShift.shift.startTime
-                      } else {
-                        content = '<span style="font-size: 8px; color: #999;">公休</span>'
-                      }
-                      return `<td class="day-col ${isWeekend(dayShift.dayOfWeek) ? 'weekend' : ''}">${content}</td>`
-                    }).join('')}
+          let content = ''
+          if (dayShift.shift) {
+            content = showLocation ?
+              `${dayShift.shift.startTime}<br/><span style="font-size: 7px; color: #666;">${dayShift.shift.location}</span>` :
+              dayShift.shift.startTime
+          } else {
+            content = '<span style="font-size: 8px; color: #999;">公休</span>'
+          }
+          return `<td class="day-col ${isWeekend(dayShift.dayOfWeek) ? 'weekend' : ''}">${content}</td>`
+        }).join('')}
                   </tr>
                 `).join('')}
               </tbody>
@@ -589,10 +601,10 @@ export async function GET(request: NextRequest) {
           headless: true,
           args: ['--no-sandbox', '--disable-setuid-sandbox']
         })
-        
+
         const page = await browser.newPage()
         await page.setContent(htmlContent, { waitUntil: 'networkidle0' })
-        
+
         const pdf = await page.pdf({
           format: 'A4',
           landscape: orientation === 'landscape',
@@ -604,18 +616,18 @@ export async function GET(request: NextRequest) {
           },
           printBackground: true
         })
-        
+
         await browser.close()
-        
+
         const fileName = `シフト表_${getScopeDisplayText()}_${month}.pdf`
-        
-        return new NextResponse(pdf, {
+
+        return new NextResponse(Buffer.from(pdf), {
           headers: {
             'Content-Type': 'application/pdf',
             'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`
           }
         })
-      } catch (error) {
+      } catch (error: unknown) {
         console.error('PDF generation error:', error)
         return NextResponse.json({ error: 'PDF生成に失敗しました' }, { status: 500 })
       }
@@ -623,7 +635,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ error: 'サポートされていない形式です' }, { status: 400 })
 
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Shift report error:', error)
     return NextResponse.json({ error: 'シフト表の生成に失敗しました' }, { status: 500 })
   }

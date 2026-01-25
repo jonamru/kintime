@@ -3,10 +3,11 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { hasPermission, getAccessibleUserIds } from "@/lib/permissions";
 import { formatJapanDate, formatJapanDateTime } from "@/lib/dateUtils";
+import { Prisma } from "@prisma/client";
 
 export async function GET(request: Request) {
   try {
-    const currentUser = await getCurrentUser(request as any);
+    const currentUser = await getCurrentUser(request);
     
     if (!currentUser) {
       return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
@@ -42,7 +43,7 @@ export async function GET(request: Request) {
     }
 
     // クエリ条件を設定
-    const whereCondition: any = {
+    const whereCondition: Prisma.ShiftWhereInput = {
       date: {
         gte: startOfDay,
         lt: endOfDay,
@@ -103,17 +104,17 @@ export async function GET(request: Request) {
       }
       map[attendance.userId].push(attendance);
       return map;
-    }, {} as Record<string, any[]>);
+    }, {} as Record<string, typeof attendances>);
 
     // シフトと打刻情報を結合
     const workersWithAttendance = shifts.map(shift => {
       const userAttendances = attendanceMap[shift.userId] || [];
       
       // 打刻状況を判定
-      const clockIn = userAttendances.find(a => a.type === "CLOCK_IN");
-      const clockOut = userAttendances.find(a => a.type === "CLOCK_OUT");
-      const wakeUp = userAttendances.find(a => a.type === "WAKE_UP");
-      const departure = userAttendances.find(a => a.type === "DEPARTURE");
+      const clockIn = userAttendances.find((a: { type: string }) => a.type === "CLOCK_IN");
+      const clockOut = userAttendances.find((a: { type: string }) => a.type === "CLOCK_OUT");
+      const wakeUp = userAttendances.find((a: { type: string }) => a.type === "WAKE_UP");
+      const departure = userAttendances.find((a: { type: string }) => a.type === "DEPARTURE");
 
       let attendanceStatus = "未打刻";
       if (clockOut) {
@@ -152,7 +153,7 @@ export async function GET(request: Request) {
       totalWorkers: workersWithAttendance.length,
       workers: workersWithAttendance,
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("出勤者取得エラー:", error);
     return NextResponse.json(
       { error: "出勤者情報の取得に失敗しました" },

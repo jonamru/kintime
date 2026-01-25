@@ -1,14 +1,20 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 import { showAlert, showNotification } from '@/lib/notification';
 import PageAccessGuard from "@/components/PageAccessGuard";
 import TimeBaseHeader from "@/components/TimeBaseHeader";
 
+interface UserSettings {
+  gpsEnabled?: boolean;
+  wakeUpEnabled?: boolean;
+  departureEnabled?: boolean;
+}
+
 export default function ImprovedAttendancePage() {
-  const [todayAttendance, setTodayAttendance] = useState<any[]>([]);
-  const [userSettings, setUserSettings] = useState<any>(null);
+  const [todayAttendance, setTodayAttendance] = useState<{ id?: string; type: string; clockTime: string }[]>([]);
+  const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [loading, setLoading] = useState(false);
   const [gpsError, setGpsError] = useState<string | null>(null);
@@ -16,10 +22,10 @@ export default function ImprovedAttendancePage() {
   const [gpsLoading, setGpsLoading] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [undoTimer, setUndoTimer] = useState<NodeJS.Timeout | null>(null);
-  const [lastAttendance, setLastAttendance] = useState<any>(null);
+  const [lastAttendance, setLastAttendance] = useState<{ id?: string; type: string; clockTime: string } | null>(null);
   const [showUndo, setShowUndo] = useState(false);
   const [successAnimation, setSuccessAnimation] = useState<string | null>(null);
-  const [confirmationSettings, setConfirmationSettings] = useState({
+  const [confirmationSettings] = useState({
     showConfirmDialog: false,
     enableUndo: true,
     undoTimeoutMs: 5000
@@ -28,39 +34,38 @@ export default function ImprovedAttendancePage() {
   useEffect(() => {
     // ページタイトルを設定
     document.title = "TimeBase - 勤怠打刻";
-    
+
     fetchTodayAttendance();
     fetchUserSettings();
   }, []);
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentTime(new Date());
-    }, 1000);
-
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     return () => clearInterval(timer);
   }, []);
 
   useEffect(() => {
     if (userSettings?.gpsEnabled) {
       setIsGpsRequired(true);
-      requestLocation();
+      // eslint-disable-next-line react-hooks/exhaustive-deps
     } else {
       setIsGpsRequired(false);
       setGpsError(null);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userSettings]);
 
-  const requestLocation = () => {
+  const requestLocation = useCallback(() => {
     console.log("GPS取得開始");
-    
+
     // HTTPS接続チェック
     if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
       setGpsError("位置情報を取得するにはHTTPS接続が必要です。");
       setGpsLoading(false);
       return;
     }
-    
+
     if (!navigator.geolocation) {
       setGpsError("このブラウザは位置情報をサポートしていません。");
       setGpsLoading(false);
@@ -71,93 +76,107 @@ export default function ImprovedAttendancePage() {
     setGpsError(null);
     setLocation(null);
 
+    const getLocationPosition = () => {
+      // iOSの検出
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !('MSStream' in window);
+
+      // iOSの場合の特別な設定
+      const options: PositionOptions = {
+        enableHighAccuracy: false, // iOSではfalseの方が安定する場合がある
+        timeout: isIOS ? 30000 : 10000, // iOSでは長めのタイムアウト
+        maximumAge: 0 // キャッシュを使用しない
+      };
+
+      console.log("GPS取得開始 (iOS:", isIOS, ", options:", options, ")");
+
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          console.log("GPS取得成功:", position.coords);
+          setLocation({
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+          });
+          setGpsError(null);
+          setGpsLoading(false);
+        },
+        (error) => {
+          let errorMessage = "";
+          let debugInfo = "";
+
+          switch (error.code) {
+            case error.PERMISSION_DENIED:
+              errorMessage = "位置情報の使用が拒否されました。";
+              if (isIOS) {
+                debugInfo = "設定 > プライバシーとセキュリティ > 位置情報サービス から、このサイトへのアクセスを許可してください。";
+              } else {
+                debugInfo = "ブラウザの設定から位置情報の使用を許可してください。";
+              }
+              break;
+            case error.POSITION_UNAVAILABLE:
+              errorMessage = "位置情報を取得できませんでした。";
+              debugInfo = "GPS信号が弱い可能性があります。屋外や窓際で再度お試しください。";
+              break;
+            case error.TIMEOUT:
+              errorMessage = "位置情報の取得がタイムアウトしました。";
+              debugInfo = "通信環境を確認して、再度お試しください。";
+              break;
+            default:
+              errorMessage = "位置情報の取得中に不明なエラーが発生しました。";
+              debugInfo = `エラーコード: ${error.code}, メッセージ: ${error.message}`;
+              break;
+          }
+
+          // 権限拒否は通常の動作なのでconsole.logを使用
+          if (error.code === error.PERMISSION_DENIED) {
+            console.log("GPS権限拒否:", errorMessage, debugInfo);
+          } else {
+            console.error("GPS取得エラー:", errorMessage, error, debugInfo);
+          }
+
+          setGpsError(`${errorMessage}\n${debugInfo}`);
+          setLocation(null);
+          setGpsLoading(false);
+        },
+        options
+      );
+    };
+
     // 権限状態をチェック（対応ブラウザのみ）
     if (navigator.permissions) {
-      navigator.permissions.query({name: 'geolocation'}).then((result) => {
+      navigator.permissions.query({ name: 'geolocation' }).then((result) => {
         console.log("GPS権限状態:", result.state);
         if (result.state === 'denied') {
           setGpsError("位置情報の使用が拒否されています。ブラウザの設定で位置情報を許可してください。");
-          setGpsLoading(false);
-          return;
+          setGpsLoading(false); // Ensure loading is cleared
         } else {
           // 権限が拒否されていない場合のみ位置情報を取得
           getLocationPosition();
         }
       }).catch((err) => {
         console.log("権限チェックエラー:", err);
-        // 権限APIが使えない場合は直接取得を試みる
         getLocationPosition();
       });
     } else {
       // 権限APIが使えない場合は直接取得を試みる
       getLocationPosition();
     }
-  };
+  }, [setGpsError, setGpsLoading, setLocation]);
 
-  const getLocationPosition = () => {
-    // iOSの検出
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
-    
-    // iOSの場合の特別な設定
-    const options: PositionOptions = {
-      enableHighAccuracy: false, // iOSではfalseの方が安定する場合がある
-      timeout: isIOS ? 30000 : 10000, // iOSでは長めのタイムアウト
-      maximumAge: 0 // キャッシュを使用しない
-    };
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    requestLocation();
+    return () => clearInterval(timer);
+  }, [requestLocation]);
 
-    console.log("GPS取得開始 (iOS:", isIOS, ", options:", options, ")");
-
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        console.log("GPS取得成功:", position.coords);
-        setLocation({
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
-        });
-        setGpsError(null);
-        setGpsLoading(false);
-      },
-      (error) => {
-        let errorMessage = "";
-        let debugInfo = "";
-        
-        switch (error.code) {
-          case error.PERMISSION_DENIED:
-            errorMessage = "位置情報の使用が拒否されました。";
-            if (isIOS) {
-              debugInfo = "設定 > プライバシーとセキュリティ > 位置情報サービス から、このサイトへのアクセスを許可してください。";
-            } else {
-              debugInfo = "ブラウザの設定から位置情報の使用を許可してください。";
-            }
-            break;
-          case error.POSITION_UNAVAILABLE:
-            errorMessage = "位置情報を取得できませんでした。";
-            debugInfo = "GPS信号が弱い可能性があります。屋外や窓際で再度お試しください。";
-            break;
-          case error.TIMEOUT:
-            errorMessage = "位置情報の取得がタイムアウトしました。";
-            debugInfo = "通信環境を確認して、再度お試しください。";
-            break;
-          default:
-            errorMessage = "位置情報の取得中に不明なエラーが発生しました。";
-            debugInfo = `エラーコード: ${error.code}, メッセージ: ${error.message}`;
-            break;
-        }
-        
-        // 権限拒否は通常の動作なのでconsole.logを使用
-        if (error.code === error.PERMISSION_DENIED) {
-          console.log("GPS権限拒否:", errorMessage, debugInfo);
-        } else {
-          console.error("GPS取得エラー:", errorMessage, error, debugInfo);
-        }
-        
-        setGpsError(`${errorMessage}\n${debugInfo}`);
-        setLocation(null);
-        setGpsLoading(false);
-      },
-      options
-    );
-  };
+  useEffect(() => {
+    if (userSettings?.gpsEnabled) {
+      setIsGpsRequired(true);
+      requestLocation();
+    } else {
+      setIsGpsRequired(false);
+      setGpsError(null);
+    }
+  }, [userSettings, requestLocation]);
 
   const fetchTodayAttendance = async () => {
     try {
@@ -166,7 +185,7 @@ export default function ImprovedAttendancePage() {
         const data = await response.json();
         setTodayAttendance(data.attendance || []);
       }
-    } catch (error) {
+    } catch (error: unknown) {
       console.error("勤怠情報の取得に失敗しました:", error);
     }
   };
@@ -178,7 +197,7 @@ export default function ImprovedAttendancePage() {
         const data = await response.json();
         setUserSettings(data);
       }
-    } catch (error) {
+    } catch (error: unknown) {
       console.error("ユーザー設定の取得に失敗しました:", error);
     }
   };
@@ -204,7 +223,7 @@ export default function ImprovedAttendancePage() {
     }
 
     setLoading(true);
-    
+
     try {
       const response = await fetch("/api/attendance/clock", {
         method: "POST",
@@ -221,16 +240,16 @@ export default function ImprovedAttendancePage() {
       if (response.ok) {
         const newAttendance = await response.json();
         await fetchTodayAttendance();
-        
+
         // 成功アニメーションを表示
         setSuccessAnimation(type);
         setTimeout(() => setSuccessAnimation(null), 1000);
-        
+
         // Undo機能が有効な場合
         if (confirmationSettings.enableUndo) {
           setLastAttendance(newAttendance);
           setShowUndo(true);
-          
+
           // Undoタイマーをセット
           if (undoTimer) clearTimeout(undoTimer);
           const timer = setTimeout(() => {
@@ -246,7 +265,7 @@ export default function ImprovedAttendancePage() {
         const errorData = await response.json();
         showAlert(errorData.error || "打刻に失敗しました");
       }
-    } catch (error) {
+    } catch {
       showAlert("エラーが発生しました");
     } finally {
       setLoading(false);
@@ -256,7 +275,7 @@ export default function ImprovedAttendancePage() {
   // Undo機能
   const handleUndo = async () => {
     if (!lastAttendance) return;
-    
+
     try {
       const response = await fetch("/api/attendance/delete", {
         method: "POST",
@@ -270,8 +289,8 @@ export default function ImprovedAttendancePage() {
 
       if (response.ok) {
         await fetchTodayAttendance();
-        showNotification("打刻を取り消しました", 'info');
-        
+        showNotification("打刻を取り消しました", 'success');
+
         // Undoステートをクリア
         setShowUndo(false);
         setLastAttendance(null);
@@ -279,7 +298,7 @@ export default function ImprovedAttendancePage() {
       } else {
         showAlert("取り消しに失敗しました");
       }
-    } catch (error) {
+    } catch {
       showAlert("取り消し処理でエラーが発生しました");
     }
   };
@@ -302,7 +321,6 @@ export default function ImprovedAttendancePage() {
     const hasWakeUp = getButtonStatus("WAKE_UP");
     const hasDeparture = getButtonStatus("DEPARTURE");
     const hasClockIn = getButtonStatus("CLOCK_IN");
-    const hasClockOut = getButtonStatus("CLOCK_OUT");
 
     switch (type) {
       case "WAKE_UP":
@@ -329,9 +347,9 @@ export default function ImprovedAttendancePage() {
   const getButtonClass = (type: string) => {
     const isDisabled = loading || getButtonStatus(type) || !isClockingAllowed(type);
     const isAnimating = successAnimation === type;
-    
-    const baseClass = "relative inline-block w-full max-w-72 py-5 mb-4 border-none rounded-xl text-xl font-bold text-white cursor-pointer transition-all duration-300 shadow-lg transform";
-    
+
+    const baseClass = "relative inline-block w-full md:max-w-72 py-4 md:py-5 mb-3 md:mb-4 border-none rounded-xl text-lg md:text-xl font-bold text-white cursor-pointer transition-all duration-300 shadow-lg transform";
+
     if (isDisabled) {
       return `${baseClass} bg-gray-400 cursor-not-allowed opacity-75`;
     }
@@ -376,7 +394,7 @@ export default function ImprovedAttendancePage() {
 
   return (
     <PageAccessGuard page="attendance">
-      <TimeBaseHeader 
+      <TimeBaseHeader
         rightAction={
           <a
             href="/dashboard"
@@ -392,28 +410,28 @@ export default function ImprovedAttendancePage() {
       />
 
       {/* メインコンテンツエリア */}
-      <main className="flex justify-center items-center px-5 py-10 min-h-[calc(100vh-4rem)] bg-[#f4f7fc]">
-        <div className="w-full max-w-lg text-center bg-white p-10 rounded-2xl shadow-xl">
-          
+      <main className="flex justify-center items-start md:items-center px-4 py-6 md:px-5 md:py-10 min-h-[calc(100dvh-4rem)] bg-[#f4f7fc]">
+        <div className="w-full max-w-lg text-center bg-white px-5 py-8 md:p-10 rounded-2xl shadow-md md:shadow-xl">
+
           {/* 時計表示 */}
-          <div className="mb-8">
-            <h1 className="text-5xl font-bold text-gray-800 mb-2 tracking-wider">
+          <div className="mb-6 md:mb-8">
+            <h1 className="text-4xl md:text-5xl font-bold text-gray-800 mb-2 tracking-wider">
               {currentTime.toLocaleTimeString("ja-JP", { hour12: false })}
             </h1>
-            <p className="text-lg text-gray-600">
+            <p className="text-base md:text-lg text-gray-600">
               {currentTime.getFullYear()}年{currentTime.getMonth() + 1}月{currentTime.getDate()}日 ({['日', '月', '火', '水', '木', '金', '土'][currentTime.getDay()]})
             </p>
           </div>
 
           {/* ステータス表示 */}
-          <div className="mb-8 py-3 px-4 bg-[#eaf2fd] text-[#4A90E2] rounded-lg text-lg font-medium">
+          <div className="mb-6 md:mb-8 py-3 px-4 bg-[#eaf2fd] text-[#4A90E2] rounded-lg text-base md:text-lg font-medium">
             現在のステータス: <strong>
               {todayAttendance.length === 0 ? "勤務前" :
-               todayAttendance.some(a => a.type === "CLOCK_OUT") ? "退勤済み" :
-               todayAttendance.some(a => a.type === "CLOCK_IN") ? "勤務中" :
-               todayAttendance.some(a => a.type === "DEPARTURE") ? "出発済み" :
-               todayAttendance.some(a => a.type === "WAKE_UP") ? "起床報告済み" :
-               "勤務前"}
+                todayAttendance.some(a => a.type === "CLOCK_OUT") ? "退勤済み" :
+                  todayAttendance.some(a => a.type === "CLOCK_IN") ? "勤務中" :
+                    todayAttendance.some(a => a.type === "DEPARTURE") ? "出発済み" :
+                      todayAttendance.some(a => a.type === "WAKE_UP") ? "起床報告済み" :
+                        "勤務前"}
             </strong>
           </div>
 
@@ -424,7 +442,7 @@ export default function ImprovedAttendancePage() {
                 <div className="flex items-center">
                   <span className="text-green-400 mr-2">✅</span>
                   <span className="text-sm text-green-800 font-medium">
-                    {getTypeLabel(lastAttendance?.type)}が完了しました
+                    {getTypeLabel(lastAttendance?.type || '')}が完了しました
                   </span>
                 </div>
                 <button
@@ -436,7 +454,7 @@ export default function ImprovedAttendancePage() {
               </div>
               <div className="mt-2">
                 <div className="w-full bg-green-200 rounded-full h-1">
-                  <div 
+                  <div
                     className="bg-green-600 h-1 rounded-full transition-all duration-300"
                     style={{
                       width: '100%',
@@ -449,37 +467,34 @@ export default function ImprovedAttendancePage() {
           )}
 
           {userSettings.gpsEnabled && (
-            <div className={`mb-6 border rounded-lg p-4 ${
-              gpsError 
-                ? 'bg-red-50 border-red-200' 
-                : location 
-                  ? 'bg-green-50 border-green-200' 
-                  : 'bg-yellow-50 border-yellow-200'
-            }`}>
+            <div className={`mb-6 border rounded-lg p-4 ${gpsError
+              ? 'bg-red-50 border-red-200'
+              : location
+                ? 'bg-green-50 border-green-200'
+                : 'bg-yellow-50 border-yellow-200'
+              }`}>
               <div className="flex items-center justify-between">
-                <span className={`text-sm ${
-                  gpsError 
-                    ? 'text-red-700' 
-                    : location 
-                      ? 'text-green-700' 
-                      : 'text-yellow-700'
-                }`}>
+                <span className={`text-sm ${gpsError
+                  ? 'text-red-700'
+                  : location
+                    ? 'text-green-700'
+                    : 'text-yellow-700'
+                  }`}>
                   📍 GPS情報取得: {
                     gpsLoading ? '取得中...' :
-                    location ? '取得完了' : 
-                    gpsError ? '取得失敗' : 
-                    '待機中'
+                      location ? '取得完了' :
+                        gpsError ? '取得失敗' :
+                          '待機中'
                   }
                 </span>
                 {(gpsError || (!location && !gpsLoading)) && (
                   <button
                     onClick={requestLocation}
                     disabled={gpsLoading}
-                    className={`px-3 py-1 text-white text-xs rounded transition-colors ${
-                      gpsLoading 
-                        ? 'bg-gray-400 cursor-not-allowed' 
-                        : 'bg-red-600 hover:bg-red-700'
-                    }`}
+                    className={`px-3 py-1 text-white text-xs rounded transition-colors ${gpsLoading
+                      ? 'bg-gray-400 cursor-not-allowed'
+                      : 'bg-red-600 hover:bg-red-700'
+                      }`}
                   >
                     {gpsLoading ? '取得中...' : gpsError ? '再取得' : '取得開始'}
                   </button>
@@ -516,7 +531,7 @@ export default function ImprovedAttendancePage() {
 
           {/* アクションボタン */}
           <div className="mb-10 space-y-4">
-              {userSettings.wakeUpEnabled && (
+            {userSettings.wakeUpEnabled && (
               <button
                 onClick={() => handleClock("WAKE_UP")}
                 disabled={loading || getButtonStatus("WAKE_UP") || !isClockingAllowed("WAKE_UP") || (isGpsRequired && !location)}
@@ -528,7 +543,7 @@ export default function ImprovedAttendancePage() {
                 起床報告
               </button>
             )}
-            
+
             {userSettings.departureEnabled && (
               <button
                 onClick={() => handleClock("DEPARTURE")}
@@ -611,13 +626,13 @@ export default function ImprovedAttendancePage() {
               </ul>
             )}
           </div>
-          
+
           {/* 履歴リンク */}
           <a
             href="/attendance/history"
             className="inline-block mt-8 text-[#4A90E2] no-underline font-medium hover:underline"
           >
-            すべての履歴を見る 
+            すべての履歴を見る
             <svg className="inline-block w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
             </svg>
