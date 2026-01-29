@@ -76,6 +76,7 @@ export default function ExpensePage() {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   // ロック状態を管理
   const [lockStatus, setLockStatus] = useState<LockStatus | null>(null);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
 
   // 日付の最小値を計算（期限無視権限がない場合の制限）
   const getMinDate = () => {
@@ -305,6 +306,7 @@ export default function ExpensePage() {
       if (response.ok) {
         await fetchExpenses();
         resetForm();
+        setShowConfirmModal(false);
         showAlert("交通費を登録しました");
       } else {
         console.error("レスポンスステータス:", response.status);
@@ -366,18 +368,10 @@ export default function ExpensePage() {
             amount: data.amount ? data.amount.toString() : prev.amount,
             date: data.date || prev.date,
             referenceUrl: data.referenceUrl || prev.referenceUrl,
+            description: data.description || prev.description,
           }));
 
-          let successMessage = "テキストを解析しました！自動入力された内容をご確認ください。\n\n";
-          if (data.departure && data.arrival) successMessage += `経路: ${data.departure} → ${data.arrival}\n`;
-          if (data.route) successMessage += `路線: ${data.route}\n`;
-          if (data.amount) successMessage += `運賃: ${data.amount}円\n`;
-          if (data.date) successMessage += `日付: ${data.date}\n`;
-          if (data.duration) successMessage += `所要時間: ${data.duration}\n`;
-          if (data.transfers !== undefined) successMessage += `乗換: ${data.transfers}回\n`;
-          if (data.referenceUrl) successMessage += `参照URL: 自動設定済み`;
-
-          showNotification(successMessage, 'success');
+          showNotification("解析完了しました", 'success');
         } else {
           showAlert("解析できませんでした。テキストの形式を確認してください。");
         }
@@ -770,14 +764,114 @@ export default function ExpensePage() {
                       リセット
                     </button>
                     <button
-                      type="submit"
-                      disabled={loading}
+                      type="button" // submitからbuttonに変更
+                      onClick={() => setShowConfirmModal(true)} // 確認モーダルを開く
+                      disabled={loading || !formData.amount || !formData.date}
                       className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700 disabled:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     >
-                      {loading ? "登録中..." : "📝 登録する"}
+                      確認画面へ
                     </button>
                   </div>
                 </form>
+
+                {/* 確認モーダル */}
+                {showConfirmModal && (
+                  <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
+                    <div className="relative p-5 border w-11/12 md:w-1/2 shadow-lg rounded-md bg-white">
+                      <h3 className="text-lg font-medium leading-6 text-gray-900 mb-4">登録内容の確認</h3>
+
+                      <div className="space-y-4 text-sm text-gray-700">
+                        <div className="grid grid-cols-3 gap-2 border-b pb-2">
+                          <span className="font-semibold">日付</span>
+                          <span className="col-span-2">{formData.date}</span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2 border-b pb-2">
+                          <span className="font-semibold">種別</span>
+                          <span className="col-span-2">
+                            {formData.type === 'TRANSPORT' ? '交通費' :
+                              formData.type === 'LODGING' ? '宿泊費' : '定期券'}
+                          </span>
+                        </div>
+                        {formData.type === 'TRANSPORT' && (
+                          <>
+                            <div className="grid grid-cols-3 gap-2 border-b pb-2">
+                              <span className="font-semibold">区間</span>
+                              <span className="col-span-2">{formData.departure} → {formData.arrival} ({formData.tripType === 'ROUND_TRIP' ? '往復' : '片道'})</span>
+                            </div>
+                            <div className="grid grid-cols-3 gap-2 border-b pb-2">
+                              <span className="font-semibold">経路/路線</span>
+                              <span className="col-span-2">{formData.route || '-'}</span>
+                            </div>
+                          </>
+                        )}
+                        {formData.type === 'COMMUTE_PASS' && (
+                          <>
+                            <div className="grid grid-cols-3 gap-2 border-b pb-2">
+                              <span className="font-semibold">区間</span>
+                              <span className="col-span-2">{formData.departure} ↔ {formData.arrival}</span>
+                            </div>
+                            <div className="grid grid-cols-3 gap-2 border-b pb-2">
+                              <span className="font-semibold">期間</span>
+                              <span className="col-span-2">{formData.validFrom} 〜 {formData.validUntil}</span>
+                            </div>
+                          </>
+                        )}
+                        <div className="grid grid-cols-3 gap-2 border-b pb-2">
+                          <span className="font-semibold">金額</span>
+                          <span className="col-span-2 font-bold text-lg text-blue-600">
+                            ¥{formData.amount ? parseInt(formData.amount).toLocaleString() : '0'}
+                            {formData.type === 'TRANSPORT' && formData.tripType === 'ROUND_TRIP' && (
+                              <span className="text-xs text-gray-500 font-normal ml-2">
+                                (往復: ¥{formData.amount ? (parseInt(formData.amount) * 2).toLocaleString() : '0'})
+                              </span>
+                            )}
+                          </span>
+                        </div>
+
+                        {formData.referenceUrl && (
+                          <div className="grid grid-cols-3 gap-2 border-b pb-2">
+                            <span className="font-semibold">参照URL</span>
+                            <div className="col-span-2">
+                              <a
+                                href={formData.referenceUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-600 hover:underline break-all text-sm"
+                              >
+                                {formData.referenceUrl}
+                              </a>
+                            </div>
+                          </div>
+                        )}
+
+                        {formData.imageUrl && (
+                          <div className="grid grid-cols-3 gap-2 border-b pb-2">
+                            <span className="font-semibold">添付画像</span>
+                            <div className="col-span-2">
+                              <img src={formData.imageUrl} alt="添付画像" className="max-h-32 border rounded" />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex space-x-3 mt-6">
+                        <button
+                          onClick={() => setShowConfirmModal(false)}
+                          className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
+                        >
+                          戻る
+                        </button>
+                        <button
+                          onClick={handleSubmit} // 実際の送信処理
+                          disabled={loading}
+                          className="flex-1 px-4 py-2 bg-green-600 text-white rounded-md text-sm font-medium hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500"
+                        >
+                          {loading ? "登録中..." : "確定して登録"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 

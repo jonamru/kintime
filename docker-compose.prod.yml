@@ -1,0 +1,104 @@
+services:
+  # Next.jsアプリケーション
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: kintime-app
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    environment:
+      - NODE_ENV=production
+      - TZ=Asia/Tokyo
+      - UPLOAD_DIR=/app/private-uploads
+    ports:
+      - "3000:3000"
+    volumes:
+      - private-uploads:/app/private-uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - kintime-network
+    healthcheck:
+      test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3000/api/public/settings" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # MySQL データベース
+  db:
+    image: mysql:8.0
+    container_name: kintime-db
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    ports:
+      - "3306:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - kintime-network
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+
+  # Nginx リバースプロキシ
+  nginx:
+    image: nginx:alpine
+    container_name: kintime-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - certbot-etc:/etc/letsencrypt:ro
+      - certbot-var:/var/lib/letsencrypt
+      - ./nginx/webroot:/var/www/html
+    depends_on:
+      - app
+    networks:
+      - kintime-network
+    healthcheck:
+      test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1/" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Certbot (Let's Encrypt)
+  certbot:
+    image: certbot/certbot
+    container_name: kintime-certbot
+    volumes:
+      - certbot-etc:/etc/letsencrypt
+      - certbot-var:/var/lib/letsencrypt
+      - ./nginx/webroot:/var/www/html
+    depends_on:
+      - nginx
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+
+volumes:
+  db_data:
+    name: kintime_db_data
+  uploads:
+    name: kintime_uploads
+  private-uploads:
+    name: kintime_private_uploads
+  certbot-etc:
+    name: kintime_certbot_etc
+  certbot-var:
+    name: kintime_certbot_var
+
+networks:
+  kintime-network:
+    name: kintime-network
+    driver: bridge

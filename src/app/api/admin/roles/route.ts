@@ -7,19 +7,18 @@ import type { User, Attendance, Shift, Expense, CustomRole, Partner, ApiResponse
 export async function GET(request: Request) {
   try {
     const currentUser = await getCurrentUser(request);
-    
+
     if (!currentUser) {
       return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
     }
 
-    // 全ロールを取得
     const roles = await prisma.customRole.findMany({
       orderBy: [
         { isSystem: "desc" },
         { name: "asc" },
       ],
     });
-    
+
     return NextResponse.json(roles);
   } catch (error: unknown) {
     console.error("ロール取得エラー:", error);
@@ -33,7 +32,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const currentUser = await getCurrentUser(request);
-    
+
     if (!currentUser) {
       return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
     }
@@ -45,19 +44,19 @@ export async function POST(request: Request) {
     }
 
     const data = await request.json();
-    
+
     // ロール名の重複チェック
     const existingRole = await prisma.customRole.findUnique({
       where: { name: data.name },
     });
-    
+
     if (existingRole) {
       return NextResponse.json(
         { error: "このロール名は既に使用されています" },
         { status: 400 }
       );
     }
-    
+
     // 新しいロールを作成
     const role = await prisma.customRole.create({
       data: {
@@ -68,7 +67,7 @@ export async function POST(request: Request) {
         pageAccess: data.pageAccess,
       },
     });
-    
+
     return NextResponse.json(role);
   } catch (error: unknown) {
     console.error("ロール作成エラー:", error);

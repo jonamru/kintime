@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
+  const [loginId, setLoginId] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -54,7 +54,7 @@ export default function LoginPage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ loginId, password }),
       });
 
       if (response.ok) {
@@ -109,19 +109,19 @@ export default function LoginPage() {
 
               <form onSubmit={handleSubmit} className="space-y-6">
                 <div>
-                  <label htmlFor="email" className="block text-sm font-medium text-gray-900 mb-2">
-                    メールアドレス
+                  <label htmlFor="loginId" className="block text-sm font-medium text-gray-900 mb-2">
+                    ログインID
                   </label>
                   <input
-                    id="email"
-                    name="email"
-                    type="email"
-                    autoComplete="email"
+                    id="loginId"
+                    name="loginId"
+                    type="text"
+                    autoComplete="username"
                     required
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg text-base focus:outline-none focus:ring-3 focus:ring-[#4A90E2] focus:ring-opacity-20 focus:border-[#4A90E2] transition-all duration-300"
-                    placeholder="メールアドレスを入力"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="ログインIDを入力"
+                    value={loginId}
+                    onChange={(e) => setLoginId(e.target.value)}
                   />
                 </div>
 

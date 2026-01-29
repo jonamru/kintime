@@ -5,20 +5,31 @@ import jwt from "jsonwebtoken";
 
 import { JWT_SECRET_STRING } from "@/lib/jwt";
 
-export async function POST(request: Request) {
-  try {
-    const { email, password } = await request.json();
+import { logger } from "@/lib/logger";
 
-    if (!email || !password) {
+export async function POST(request: Request) {
+  const ip = request.headers.get("x-forwarded-for") || "unknown";
+  const userAgent = request.headers.get("user-agent") || "unknown";
+
+  try {
+    // loginId（メールアドレスまたはユーザーID）とパスワードを取得
+    const { loginId, password } = await request.json();
+
+    if (!loginId || !password) {
       return NextResponse.json(
-        { error: "メールアドレスとパスワードは必須です" },
+        { error: "ログインIDとパスワードは必須です" },
         { status: 400 }
       );
     }
 
-    // ユーザーを検索
-    const user = await prisma.user.findUnique({
-      where: { email: email.toLowerCase() },
+    // ユーザーを検索 (メールアドレス または ユーザーID)
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { email: loginId.toLowerCase() },
+          { userId: loginId }
+        ]
+      },
       include: {
         partner: {
           select: {
@@ -39,14 +50,16 @@ export async function POST(request: Request) {
     });
 
     if (!user) {
+      logger.warn('AUTH', 'Login failed: User not found', { loginId, ip, userAgent });
       return NextResponse.json(
-        { error: "メールアドレスまたはパスワードが正しくありません" },
+        { error: "ログインIDまたはパスワードが正しくありません" },
         { status: 401 }
       );
     }
 
     // アカウントが無効化されているかチェック
     if (user.isActive === false) {
+      logger.warn('AUTH', 'Login blocked: Account inactive', { userId: user.id, loginId, ip });
       return NextResponse.json(
         { error: "アカウントが無効化されています" },
         { status: 403 }
@@ -56,6 +69,7 @@ export async function POST(request: Request) {
     // パスワードを検証
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
+      logger.warn('AUTH', 'Login failed: Invalid password', { userId: user.id, loginId, ip, userAgent });
       return NextResponse.json(
         { error: "メールアドレスまたはパスワードが正しくありません" },
         { status: 401 }
@@ -73,6 +87,9 @@ export async function POST(request: Request) {
       JWT_SECRET_STRING,
       { expiresIn: "24h" }
     );
+
+    // ログイン成功ログ
+    logger.info('AUTH', 'Login successful', { userId: user.id, loginId, ip, userAgent });
 
     // レスポンスにクッキーを設定
     const response = NextResponse.json({
@@ -104,6 +121,7 @@ export async function POST(request: Request) {
     return response;
   } catch (error) {
     console.error("ログインエラー:", error);
+    logger.error('AUTH', 'Login error occurred', { error: String(error), ip });
     return NextResponse.json(
       { error: "ログインに失敗しました" },
       { status: 500 }

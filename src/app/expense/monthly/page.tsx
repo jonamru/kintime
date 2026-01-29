@@ -149,6 +149,13 @@ export default function MonthlyExpensePage() {
     }
   }, [currentMonth, selectedUser, currentUser, permissions.isAdmin]); // Add permissions.isAdmin to dependencies
 
+  // 月次経費を取得
+  useEffect(() => {
+    if (currentUser) {
+      fetchMonthlyExpenses();
+    }
+  }, [currentUser, currentMonth, selectedUser, fetchMonthlyExpenses]);
+
   const _generateCalendar = useCallback(() => {
     const year = currentMonth.getFullYear();
     const month = currentMonth.getMonth();

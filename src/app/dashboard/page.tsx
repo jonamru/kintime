@@ -168,7 +168,8 @@ export default function DashboardPage() {
       const now = new Date();
       const year = now.getFullYear();
       const month = now.getMonth() + 1;
-      const response = await fetch(`/api/expenses/monthly?year=${year}&month=${month}`);
+      // 自分の経費だけを取得するため、userIdを指定
+      const response = await fetch(`/api/expenses/monthly?year=${year}&month=${month}&userId=${user?.id}`);
       if (response.ok) {
         const data = await response.json();
         setMonthlyExpense(data.total || 0);

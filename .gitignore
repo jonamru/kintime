@@ -41,3 +41,11 @@ yarn-error.log*
 next-env.d.ts
 
 /src/generated/prisma
+
+# Uploads
+private-uploads/
+nginx/webroot/
+
+# Backups
+*.bak
+*.old

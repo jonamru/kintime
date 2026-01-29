@@ -1,51 +1,77 @@
-
 import { NextRequest, NextResponse } from "next/server";
-import { readFile } from "fs/promises";
+import { readFile, stat } from "fs/promises";
 import path from "path";
 import { getCurrentUser } from "@/lib/auth";
+
+// 簡易MIMEタイプ判定
+function getMimeType(filename: string): string {
+    const ext = path.extname(filename).toLowerCase();
+    switch (ext) {
+        case '.jpg':
+        case '.jpeg':
+            return 'image/jpeg';
+        case '.png':
+            return 'image/png';
+        case '.gif':
+            return 'image/gif';
+        case '.webp':
+            return 'image/webp';
+        case '.pdf':
+            return 'application/pdf';
+        default:
+            return 'application/octet-stream';
+    }
+}
 
 export async function GET(
     request: NextRequest,
     { params }: { params: Promise<{ filename: string }> }
 ) {
     try {
-        // 1. 認証チェック
-        const currentUser = await getCurrentUser(request);
-        if (!currentUser) {
-            return new NextResponse("Unauthorized", { status: 401 });
+        const { filename } = await params;
+        console.log(`[ImageRequest] Filename: ${filename}`);
+
+        // 認証チェック
+        const user = await getCurrentUser(request);
+        if (!user) {
+            console.log(`[ImageRequest] Unauthorized access attempt for ${filename}`);
+            return new NextResponse(null, { status: 401 }); // Unauthorized
         }
 
-        const { filename } = await params;
+        // パス・トラバーサル対策
+        if (filename.includes('/') || filename.includes('\\') || filename.includes('..')) {
+            console.log(`[ImageRequest] Invalid filename: ${filename}`);
+            return new NextResponse(null, { status: 400 });
+        }
 
-        // セキュリティ対策（ディレクトリトラバーサル防止）
-        const safeFilename = path.basename(filename);
-        const filePath = path.join(process.cwd(), "private-uploads", safeFilename);
+        // private-uploads ディレクトリからファイルを探す
+        // 本番環境(Docker)では /app/private-uploads
+        const privateUploadsDir = path.join(process.cwd(), "private-uploads");
+        const filePath = path.join(privateUploadsDir, filename);
+
+        console.log(`[ImageRequest] Looking for file at: ${filePath}`);
 
         try {
-            const fileBuffer = await readFile(filePath);
-
-            // Content-Typeの決定
-            const ext = path.extname(safeFilename).toLowerCase();
-            const contentType = {
-                '.png': 'image/png',
-                '.jpg': 'image/jpeg',
-                '.jpeg': 'image/jpeg',
-                '.gif': 'image/gif',
-                '.webp': 'image/webp',
-            }[ext] || 'application/octet-stream';
-
-            return new NextResponse(new Blob([new Uint8Array(fileBuffer)]), {
-                headers: {
-                    "Content-Type": contentType,
-                    "Cache-Control": "private, max-age=3600" // ブラウザキャッシュを許可（認証済みユーザーのみ）
-                },
-            });
-        } catch (error) {
-            console.error("ファイル読み込みエラー:", error);
-            return new NextResponse("Not Found", { status: 404 });
+            await stat(filePath);
+        } catch {
+            console.log(`[ImageRequest] File not found: ${filePath}`);
+            return new NextResponse(null, { status: 404 });
         }
+
+        const fileBuffer = await readFile(filePath);
+        const contentType = getMimeType(filePath);
+
+        // レスポンスを返す
+        // @ts-expect-error Buffer is valid BodyInit but types might be outdated
+        return new NextResponse(fileBuffer, {
+            headers: {
+                "Content-Type": contentType,
+                "Cache-Control": "private, max-age=3600",
+            },
+        });
+
     } catch (error) {
         console.error("画像配信エラー:", error);
-        return new NextResponse("Internal Server Error", { status: 500 });
+        return new NextResponse(null, { status: 500 });
     }
 }

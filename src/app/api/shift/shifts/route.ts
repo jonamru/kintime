@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getCurrentUser } from "@/lib/auth";
 
 export async function GET(request: Request) {
   try {
@@ -49,11 +50,26 @@ export async function POST(request: Request) {
   try {
     const { date, startTime, endTime, shiftType, location, breakTime, note } = await request.json();
 
-    // 簡単な認証（実際にはセッションから取得）
-    const userEmail = "admin@example.com";
-    
+    // 認証ユーザーを取得
+    const currentUser = await getCurrentUser(request);
+
+    if (!currentUser) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // APIでは userEmail ではなく、認証済みユーザーのIDなどを使用するが、
+    // ここではPOSTデータを作成する際に currentUser を使用する。
+    // 元のコードは "admin@example.com" でユーザーを引いていたが、
+    // 本来は認証済みユーザー自身として作成すべき。
+
+    // しかし、元のロジックが `user` 変数をDBから引いているので、
+    // getCurrentUserの結果をそのまま使うか、再取得するか。
+    // getCurrentUserはAuthUser型を返す。PrismaのUser型に近いが完全ではないかもしれない。
+    // ここではPrismaのUserが必要ならIDで引くのが安全。
+
+    // AuthUser (currentUser) には id があるのでそれを使う。
     const user = await prisma.user.findUnique({
-      where: { email: userEmail }
+      where: { id: currentUser.id }
     });
 
     if (!user) {

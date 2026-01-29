@@ -19,6 +19,7 @@ interface CustomRole {
   displayName: string;
   isSystem: boolean;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   permissions: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   pageAccess: any;
@@ -454,7 +455,7 @@ export default function SystemAdminPage() {
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                             {role.name}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                             {role.displayName}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -527,12 +528,18 @@ export default function SystemAdminPage() {
                         {/* 権限設定（簡素化版） */}
                         <div className="border-t pt-6">
                           <h4 className="text-lg font-semibold mb-4 text-gray-900">権限設定</h4>
-                          <p className="text-sm text-gray-600 mb-6">各カテゴリの対象範囲と権限レベルを選択してください。</p>
+                          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                            <p className="text-sm text-blue-800 font-medium mb-2">権限設定の説明</p>
+                            <div className="text-xs text-blue-700 space-y-1">
+                              <p><span className="font-semibold">対象範囲:</span> 自分のみ（自分のデータのみ）/ 担当者（管理対象のユーザー）/ 会社内（同一パートナー会社）/ 全員（全ユーザー）</p>
+                              <p><span className="font-semibold">権限レベル:</span> なし（アクセス不可）/ 閲覧（データの表示のみ）/ 編集（データの追加・変更）/ 管理（削除・承認・ロック解除等の管理操作）</p>
+                            </div>
+                          </div>
 
                           <div className="space-y-4">
                             {/* ユーザー管理 */}
                             <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                              <div className="flex items-center mb-3">
+                              <div className="flex items-center mb-2">
                                 <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center mr-3">
                                   <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
@@ -540,6 +547,7 @@ export default function SystemAdminPage() {
                                 </div>
                                 <h5 className="font-semibold text-gray-900">ユーザー管理</h5>
                               </div>
+                              <p className="text-xs text-gray-500 mb-3 ml-11">スタッフの登録・編集・削除、プロフィール情報の管理</p>
                               <div className="grid grid-cols-2 gap-4">
                                 <div>
                                   <label className="block text-sm font-medium text-gray-700 mb-1">対象範囲</label>
@@ -590,7 +598,7 @@ export default function SystemAdminPage() {
 
                             {/* シフト管理 */}
                             <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                              <div className="flex items-center mb-3">
+                              <div className="flex items-center mb-2">
                                 <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center mr-3">
                                   <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -598,6 +606,7 @@ export default function SystemAdminPage() {
                                 </div>
                                 <h5 className="font-semibold text-gray-900">シフト管理</h5>
                               </div>
+                              <p className="text-xs text-gray-500 mb-3 ml-11">シフトの閲覧・登録・編集・承認・ロック管理</p>
                               <div className="grid grid-cols-2 gap-4">
                                 <div>
                                   <label className="block text-sm font-medium text-gray-700 mb-1">対象範囲</label>
@@ -648,7 +657,7 @@ export default function SystemAdminPage() {
 
                             {/* 勤怠管理 */}
                             <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                              <div className="flex items-center mb-3">
+                              <div className="flex items-center mb-2">
                                 <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center mr-3">
                                   <svg className="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -656,6 +665,7 @@ export default function SystemAdminPage() {
                                 </div>
                                 <h5 className="font-semibold text-gray-900">勤怠管理</h5>
                               </div>
+                              <p className="text-xs text-gray-500 mb-3 ml-11">勤怠記録の閲覧・編集・代理打刻・レポート出力</p>
                               <div className="grid grid-cols-2 gap-4">
                                 <div>
                                   <label className="block text-sm font-medium text-gray-700 mb-1">対象範囲</label>
@@ -706,7 +716,7 @@ export default function SystemAdminPage() {
 
                             {/* 経費管理 */}
                             <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                              <div className="flex items-center mb-3">
+                              <div className="flex items-center mb-2">
                                 <div className="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center mr-3">
                                   <svg className="w-4 h-4 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
@@ -714,6 +724,7 @@ export default function SystemAdminPage() {
                                 </div>
                                 <h5 className="font-semibold text-gray-900">経費管理</h5>
                               </div>
+                              <p className="text-xs text-gray-500 mb-3 ml-11">経費・定期代の閲覧・承認・ロック・締切無視</p>
                               <div className="grid grid-cols-2 gap-4">
                                 <div>
                                   <label className="block text-sm font-medium text-gray-700 mb-1">対象範囲</label>
@@ -764,7 +775,7 @@ export default function SystemAdminPage() {
 
                             {/* システム設定 */}
                             <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                              <div className="flex items-center mb-3">
+                              <div className="flex items-center mb-2">
                                 <div className="w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center mr-3">
                                   <svg className="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -773,6 +784,7 @@ export default function SystemAdminPage() {
                                 </div>
                                 <h5 className="font-semibold text-gray-900">システム設定</h5>
                               </div>
+                              <p className="text-xs text-gray-500 mb-3 ml-11">会社情報・ロール・パートナー会社の管理</p>
                               <div className="grid grid-cols-2 gap-4">
                                 <div className="col-span-2">
                                   <label className="block text-sm font-medium text-gray-700 mb-1">権限レベル</label>

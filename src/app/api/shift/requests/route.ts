@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getCurrentUser } from "@/lib/auth";
 
 export async function GET(request: Request) {
   try {
@@ -11,11 +12,15 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "年月が指定されていません" }, { status: 400 });
     }
 
-    // 簡単な認証（実際にはセッションから取得）
-    const userEmail = "admin@example.com";
-    
+    // 認証ユーザーを取得
+    const currentUser = await getCurrentUser(request);
+
+    if (!currentUser) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const user = await prisma.user.findUnique({
-      where: { email: userEmail }
+      where: { id: currentUser.id }
     });
 
     if (!user) {
@@ -54,7 +59,7 @@ export async function POST(request: Request) {
 
     // 簡単な認証（実際にはセッションから取得）
     const userEmail = "admin@example.com";
-    
+
     const user = await prisma.user.findUnique({
       where: { email: userEmail }
     });

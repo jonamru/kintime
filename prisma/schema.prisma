@@ -239,9 +239,9 @@ model CustomRole {
   name        String   @unique
   displayName String
   isSystem    Boolean  @default(false)
-  permissions Json
-  pageAccess  Json
-  createdAt   DateTime @default(now())
+  permissions   Json      // 権限設定（カテゴリごとのレベルとスコープ）
+  pageAccess    Json?     // ページアクセス権限
+  createdAt     DateTime  @default(now())
   updatedAt   DateTime @updatedAt
   users       User[]
 }

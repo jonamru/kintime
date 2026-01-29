@@ -97,11 +97,11 @@ tmp/
 temp/
 
 # Prisma
-prisma/migrations/
+
 .env
 
 # Development scripts
-scripts/
+
 debug-*.js
 check-*.js
 migrate-*.ts

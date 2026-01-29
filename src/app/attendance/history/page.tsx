@@ -6,6 +6,7 @@ import PageAccessGuard from "@/components/PageAccessGuard";
 import TimeBaseHeader from "@/components/TimeBaseHeader";
 import { showAlert, showNotification } from '@/lib/notification';
 import UserSearchCombobox from '@/components/UserSearchCombobox';
+import { hasUserPermission } from '@/lib/clientPermissions';
 interface Attendance {
   id: string;
   userId: string;
@@ -47,6 +48,7 @@ export default function AttendanceHistoryPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [canEdit, setCanEdit] = useState(false);
   const [loading, setLoading] = useState(false);
   const [editingAttendance, setEditingAttendance] = useState<Attendance | null>(null);
   const [correctionForm, setCorrectionForm] = useState({
@@ -97,11 +99,15 @@ export default function AttendanceHistoryPage() {
         setUsers(data.users || []);
         setIsAdmin(true);
 
-        // 現在のユーザー情報を取得
         const userResponse = await fetch("/api/attendance/user-settings");
         if (userResponse.ok) {
           const userData = await userResponse.json();
           setCurrentUser(userData);
+
+          // 編集権限をチェック
+          const hasEditPermission = hasUserPermission(userData, 'attendanceManagement', 'editOthers') ||
+            hasUserPermission(userData, 'attendanceManagement', 'editAssigned');
+          setCanEdit(hasEditPermission);
 
           // 管理者の場合、初期選択は自分にする
           if (data.users && data.users.length > 0 && !selectedUserId) {
@@ -126,6 +132,11 @@ export default function AttendanceHistoryPage() {
         if (userResponse.ok) {
           const userData = await userResponse.json();
           setCurrentUser(userData);
+
+          // 編集権限をチェック（一般ユーザーでも権限があれば編集可能）
+          const hasEditPermission = hasUserPermission(userData, 'attendanceManagement', 'editOthers') ||
+            hasUserPermission(userData, 'attendanceManagement', 'editAssigned');
+          setCanEdit(hasEditPermission);
         }
       }
     } catch (error: unknown) {
@@ -539,7 +550,7 @@ export default function AttendanceHistoryPage() {
                         <th className="py-3 px-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                           退勤時刻
                         </th>
-                        {isAdmin && (
+                        {canEdit && (
                           <th className="py-3 px-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                             操作
                           </th>
@@ -685,7 +696,7 @@ export default function AttendanceHistoryPage() {
                             </td>
 
                             {/* 操作カラム */}
-                            {isAdmin && (
+                            {canEdit && (
                               <td className="py-4 px-4 whitespace-nowrap text-center">
                                 <button
                                   onClick={() => openBulkEditModal(day)}

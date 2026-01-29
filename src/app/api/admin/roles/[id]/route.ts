@@ -11,7 +11,7 @@ export async function PUT(
   try {
     const params = await context.params;
     const currentUser = await getCurrentUser(request);
-    
+
     if (!currentUser) {
       return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
     }
@@ -23,19 +23,19 @@ export async function PUT(
     }
 
     const data = await request.json();
-    
+
     // ロールの存在確認
     const existingRole = await prisma.customRole.findUnique({
       where: { id: params.id },
     });
-    
+
     if (!existingRole) {
       return NextResponse.json(
         { error: "ロールが見つかりません" },
         { status: 404 }
       );
     }
-    
+
     // ロールを更新
     const role = await prisma.customRole.update({
       where: { id: params.id },
@@ -45,7 +45,7 @@ export async function PUT(
         pageAccess: data.pageAccess,
       },
     });
-    
+
     return NextResponse.json(role);
   } catch (error: unknown) {
     console.error("ロール更新エラー:", error);
@@ -63,7 +63,7 @@ export async function DELETE(
   try {
     const params = await context.params;
     const currentUser = await getCurrentUser(request);
-    
+
     if (!currentUser) {
       return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
     }
@@ -73,19 +73,19 @@ export async function DELETE(
     if (!hasManagePermission) {
       return NextResponse.json({ error: "権限がありません" }, { status: 403 });
     }
-    
+
     // ロールの存在確認
     const existingRole = await prisma.customRole.findUnique({
       where: { id: params.id },
     });
-    
+
     if (!existingRole) {
       return NextResponse.json(
         { error: "ロールが見つかりません" },
         { status: 404 }
       );
     }
-    
+
     // システムロールは削除不可
     if (existingRole.isSystem) {
       return NextResponse.json(
@@ -93,24 +93,24 @@ export async function DELETE(
         { status: 400 }
       );
     }
-    
+
     // このロールを使用しているユーザーがいるかチェック
     const usersWithRole = await prisma.user.count({
       where: { customRoleId: params.id },
     });
-    
+
     if (usersWithRole > 0) {
       return NextResponse.json(
         { error: `このロールは${usersWithRole}人のユーザーが使用しているため削除できません` },
         { status: 400 }
       );
     }
-    
+
     // ロールを削除
     await prisma.customRole.delete({
       where: { id: params.id },
     });
-    
+
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
     console.error("ロール削除エラー:", error);

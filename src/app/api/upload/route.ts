@@ -18,19 +18,30 @@ export async function POST(request: NextRequest) {
     }
 
     // ファイル形式チェック
-    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
-    if (!allowedTypes.includes(file.type)) {
-      return NextResponse.json({ error: "対応していないファイル形式です。JPEG、PNG、GIF、WebPファイルをアップロードしてください" }, { status: 400 });
-    }
-
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
+
+    // file-typeを使用したマジックバイト検証
+    const { fileTypeFromBuffer } = await import('file-type');
+    const type = await fileTypeFromBuffer(buffer);
+
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+
+    if (!type || !allowedTypes.includes(type.mime)) {
+      return NextResponse.json({ error: "対応していないファイル形式です。JPEG、PNG、GIF、WebPファイルをアップロードしてください" }, { status: 400 });
+    }
 
     // ファイル名を生成 (タイムスタンプ + オリジナル名)
     const timestamp = Date.now();
     const originalName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_'); // 特殊文字を_に置換
     const fileName = `${timestamp}_${originalName}`;
-    const filePath = path.join(process.cwd(), "private-uploads", fileName);
+
+    // 環境変数から保存先を取得、なければデフォルトで private-uploads
+    // セキュリティのため、Webから直接アクセスできないディレクトリに保存する
+    const uploadDir = process.env.PRIVATE_UPLOAD_DIR || path.join(process.cwd(), "private-uploads");
+    const filePath = path.join(uploadDir, fileName);
+
+    console.log(`[Upload] Saving file to secure directory: ${filePath}`);
 
     // ファイルを保存
     await writeFile(filePath, buffer);

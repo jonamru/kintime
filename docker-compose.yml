@@ -1,17 +1,17 @@
-version: '3.8'
-
 services:
   # Next.jsアプリケーション
   app:
-    build: 
+    build:
       context: .
       dockerfile: Dockerfile
     container_name: kintime-app
     restart: unless-stopped
+    env_file:
+      - .env.production.local
     environment:
       - NODE_ENV=production
-      - DATABASE_URL=mysql://kintime:kintime_password@db:3306/kintime
-      - JWT_SECRET_STRING=your_very_strong_jwt_secret_key_minimum_32_characters
+      - TZ=Asia/Tokyo
+      # DATABASE_URLなどのシークレットはenv_fileから読み込む
       - UPLOAD_DIR=./public/uploads
     ports:
       - "3000:3000"
@@ -23,7 +23,7 @@ services:
     networks:
       - kintime-network
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/auth/me"]
+      test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/auth/me" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -34,11 +34,10 @@ services:
     image: mysql:8.0
     container_name: kintime-db
     restart: unless-stopped
-    environment:
-      MYSQL_ROOT_PASSWORD: root_password_change_this
-      MYSQL_DATABASE: kintime
-      MYSQL_USER: kintime
-      MYSQL_PASSWORD: kintime_password
+    env_file:
+      - .env.production.local
+    # 環境変数はenv_fileから読み込まれます:
+    # MYSQL_ROOT_PASSWORD, MYSQL_DATABASE, MYSQL_USER, MYSQL_PASSWORD
     ports:
       - "3306:3306"
     volumes:
@@ -47,7 +46,7 @@ services:
     networks:
       - kintime-network
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "kintime", "-pkintime_password"]
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -72,25 +71,9 @@ services:
     networks:
       - kintime-network
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/"]
+      test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/" ]
       interval: 30s
       timeout: 10s
-      retries: 3
-
-  # Redis（セッション管理・キャッシュ用）
-  redis:
-    image: redis:7-alpine
-    container_name: kintime-redis
-    restart: unless-stopped
-    command: redis-server --appendonly yes
-    volumes:
-      - redis_data:/data
-    networks:
-      - kintime-network
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 3s
       retries: 3
 
 volumes:
@@ -98,8 +81,6 @@ volumes:
     name: kintime_db_data
   uploads:
     name: kintime_uploads
-  redis_data:
-    name: kintime_redis_data
 
 networks:
   kintime-network:
