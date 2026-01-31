@@ -6,6 +6,7 @@ import { showNotification, showConfirm } from "@/lib/notification";
 import Link from "next/link";
 import TimeBaseHeader from '@/components/TimeBaseHeader';
 import PageAccessGuard from "@/components/PageAccessGuard";
+import { useAuth } from "@/components/AuthProvider";
 interface SystemSettings {
   id?: string;
   companyName?: string;
@@ -23,10 +24,15 @@ interface CustomRole {
   permissions: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   pageAccess: any;
+  rank?: number;
 }
 
 export default function SystemAdminPage() {
   const _router = useRouter();
+  const { user: currentUser } = useAuth();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const myRank = (currentUser?.customRole as any)?.rank || 0;
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [settings, setSettings] = useState<SystemSettings>({});
@@ -240,6 +246,7 @@ export default function SystemAdminPage() {
         adminSystem: false,
         bulkEdit: false,
       },
+      rank: 0,
     });
     setIsEditingRole(true);
     setIsCreatingRole(true);
@@ -365,7 +372,7 @@ export default function SystemAdminPage() {
             <div className="max-w-7xl mx-auto sm:px-6 lg:px-8">
               {/* 会社情報設定 */}
               <div className="bg-white shadow rounded-lg mt-8 p-6">
-                <h2 className="text-xl font-semibold mb-4">会社情報設定</h2>
+                <h2 className="text-xl font-semibold text-gray-900 mb-4">会社情報設定</h2>
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700">
@@ -422,7 +429,7 @@ export default function SystemAdminPage() {
               {/* ロール管理 */}
               <div className="bg-white shadow rounded-lg mt-8 p-6">
                 <div className="flex justify-between items-center mb-4">
-                  <h2 className="text-xl font-semibold">ロール管理</h2>
+                  <h2 className="text-xl font-semibold text-gray-900">ロール管理</h2>
                   <button
                     onClick={handleRoleCreate}
                     className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded"
@@ -524,489 +531,507 @@ export default function SystemAdminPage() {
                             />
                           </div>
                         </div>
+                        {/* rank settings starts here */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700">
+                            アクセスレベル (ランク)
+                          </label>
+                          <select
+                            value={selectedRole.rank || 0}
+                            onChange={(e) => setSelectedRole({ ...selectedRole, rank: parseInt(e.target.value) })}
+                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                          >
+                            <option value="0" disabled={myRank < 0}>Level 0: 一般スタッフ (General)</option>
+                            <option value="1" disabled={myRank < 1}>Level 1: リーダー (Leader)</option>
+                            <option value="2" disabled={myRank < 2}>Level 2: マネージャー (Manager)</option>
+                            <option value="3" disabled={myRank < 3}>Level 3: 上級マネージャー (Senior Manager)</option>
+                            <option value="4" disabled={myRank < 4}>Level 4: システム管理者 (System Admin)</option>
+                          </select>
+                          <p className="mt-1 text-xs text-gray-500">
+                            このロールが持つ権限の階層レベルを設定します。高いランクのユーザーは、低いランクのユーザーを管理できます。
+                          </p>
+                        </div>
+                      </div>
 
-                        {/* 権限設定（簡素化版） */}
-                        <div className="border-t pt-6">
-                          <h4 className="text-lg font-semibold mb-4 text-gray-900">権限設定</h4>
-                          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-                            <p className="text-sm text-blue-800 font-medium mb-2">権限設定の説明</p>
-                            <div className="text-xs text-blue-700 space-y-1">
-                              <p><span className="font-semibold">対象範囲:</span> 自分のみ（自分のデータのみ）/ 担当者（管理対象のユーザー）/ 会社内（同一パートナー会社）/ 全員（全ユーザー）</p>
-                              <p><span className="font-semibold">権限レベル:</span> なし（アクセス不可）/ 閲覧（データの表示のみ）/ 編集（データの追加・変更）/ 管理（削除・承認・ロック解除等の管理操作）</p>
-                            </div>
-                          </div>
-
-                          <div className="space-y-4">
-                            {/* ユーザー管理 */}
-                            <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                              <div className="flex items-center mb-2">
-                                <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center mr-3">
-                                  <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
-                                  </svg>
-                                </div>
-                                <h5 className="font-semibold text-gray-900">ユーザー管理</h5>
-                              </div>
-                              <p className="text-xs text-gray-500 mb-3 ml-11">スタッフの登録・編集・削除、プロフィール情報の管理</p>
-                              <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-1">対象範囲</label>
-                                  <select
-                                    value={selectedRole.permissions.userManagement?.scope || 'self'}
-                                    onChange={(e) => setSelectedRole({
-                                      ...selectedRole,
-                                      permissions: {
-                                        ...selectedRole.permissions,
-                                        userManagement: {
-                                          ...selectedRole.permissions.userManagement,
-                                          scope: e.target.value
-                                        },
-                                      },
-                                    })}
-                                    className="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                                  >
-                                    <option value="self">自分のみ</option>
-                                    <option value="assigned">担当者</option>
-                                    <option value="company">会社内</option>
-                                    <option value="all">全員</option>
-                                  </select>
-                                </div>
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-1">権限レベル</label>
-                                  <select
-                                    value={selectedRole.permissions.userManagement?.level || 'none'}
-                                    onChange={(e) => setSelectedRole({
-                                      ...selectedRole,
-                                      permissions: {
-                                        ...selectedRole.permissions,
-                                        userManagement: {
-                                          ...selectedRole.permissions.userManagement,
-                                          level: e.target.value
-                                        },
-                                      },
-                                    })}
-                                    className="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                                  >
-                                    <option value="none">なし</option>
-                                    <option value="view">閲覧</option>
-                                    <option value="edit">編集</option>
-                                    <option value="admin">管理</option>
-                                  </select>
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* シフト管理 */}
-                            <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                              <div className="flex items-center mb-2">
-                                <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center mr-3">
-                                  <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                  </svg>
-                                </div>
-                                <h5 className="font-semibold text-gray-900">シフト管理</h5>
-                              </div>
-                              <p className="text-xs text-gray-500 mb-3 ml-11">シフトの閲覧・登録・編集・承認・ロック管理</p>
-                              <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-1">対象範囲</label>
-                                  <select
-                                    value={selectedRole.permissions.shiftManagement?.scope || 'self'}
-                                    onChange={(e) => setSelectedRole({
-                                      ...selectedRole,
-                                      permissions: {
-                                        ...selectedRole.permissions,
-                                        shiftManagement: {
-                                          ...selectedRole.permissions.shiftManagement,
-                                          scope: e.target.value
-                                        },
-                                      },
-                                    })}
-                                    className="w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
-                                  >
-                                    <option value="self">自分のみ</option>
-                                    <option value="assigned">担当者</option>
-                                    <option value="company">会社内</option>
-                                    <option value="all">全員</option>
-                                  </select>
-                                </div>
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-1">権限レベル</label>
-                                  <select
-                                    value={selectedRole.permissions.shiftManagement?.level || 'none'}
-                                    onChange={(e) => setSelectedRole({
-                                      ...selectedRole,
-                                      permissions: {
-                                        ...selectedRole.permissions,
-                                        shiftManagement: {
-                                          ...selectedRole.permissions.shiftManagement,
-                                          level: e.target.value
-                                        },
-                                      },
-                                    })}
-                                    className="w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
-                                  >
-                                    <option value="none">なし</option>
-                                    <option value="view">閲覧</option>
-                                    <option value="edit">編集</option>
-                                    <option value="admin">管理</option>
-                                  </select>
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* 勤怠管理 */}
-                            <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                              <div className="flex items-center mb-2">
-                                <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center mr-3">
-                                  <svg className="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                  </svg>
-                                </div>
-                                <h5 className="font-semibold text-gray-900">勤怠管理</h5>
-                              </div>
-                              <p className="text-xs text-gray-500 mb-3 ml-11">勤怠記録の閲覧・編集・代理打刻・レポート出力</p>
-                              <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-1">対象範囲</label>
-                                  <select
-                                    value={selectedRole.permissions.attendanceManagement?.scope || 'self'}
-                                    onChange={(e) => setSelectedRole({
-                                      ...selectedRole,
-                                      permissions: {
-                                        ...selectedRole.permissions,
-                                        attendanceManagement: {
-                                          ...selectedRole.permissions.attendanceManagement,
-                                          scope: e.target.value
-                                        },
-                                      },
-                                    })}
-                                    className="w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
-                                  >
-                                    <option value="self">自分のみ</option>
-                                    <option value="assigned">担当者</option>
-                                    <option value="company">会社内</option>
-                                    <option value="all">全員</option>
-                                  </select>
-                                </div>
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-1">権限レベル</label>
-                                  <select
-                                    value={selectedRole.permissions.attendanceManagement?.level || 'none'}
-                                    onChange={(e) => setSelectedRole({
-                                      ...selectedRole,
-                                      permissions: {
-                                        ...selectedRole.permissions,
-                                        attendanceManagement: {
-                                          ...selectedRole.permissions.attendanceManagement,
-                                          level: e.target.value
-                                        },
-                                      },
-                                    })}
-                                    className="w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
-                                  >
-                                    <option value="none">なし</option>
-                                    <option value="view">閲覧</option>
-                                    <option value="edit">編集</option>
-                                    <option value="admin">管理</option>
-                                  </select>
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* 経費管理 */}
-                            <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                              <div className="flex items-center mb-2">
-                                <div className="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center mr-3">
-                                  <svg className="w-4 h-4 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
-                                  </svg>
-                                </div>
-                                <h5 className="font-semibold text-gray-900">経費管理</h5>
-                              </div>
-                              <p className="text-xs text-gray-500 mb-3 ml-11">経費・定期代の閲覧・承認・ロック・締切無視</p>
-                              <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-1">対象範囲</label>
-                                  <select
-                                    value={selectedRole.permissions.expenseManagement?.scope || 'self'}
-                                    onChange={(e) => setSelectedRole({
-                                      ...selectedRole,
-                                      permissions: {
-                                        ...selectedRole.permissions,
-                                        expenseManagement: {
-                                          ...selectedRole.permissions.expenseManagement,
-                                          scope: e.target.value
-                                        },
-                                      },
-                                    })}
-                                    className="w-full rounded-md border-gray-300 shadow-sm focus:border-orange-500 focus:ring-orange-500 sm:text-sm"
-                                  >
-                                    <option value="self">自分のみ</option>
-                                    <option value="assigned">担当者</option>
-                                    <option value="company">会社内</option>
-                                    <option value="all">全員</option>
-                                  </select>
-                                </div>
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-1">権限レベル</label>
-                                  <select
-                                    value={selectedRole.permissions.expenseManagement?.level || 'none'}
-                                    onChange={(e) => setSelectedRole({
-                                      ...selectedRole,
-                                      permissions: {
-                                        ...selectedRole.permissions,
-                                        expenseManagement: {
-                                          ...selectedRole.permissions.expenseManagement,
-                                          level: e.target.value
-                                        },
-                                      },
-                                    })}
-                                    className="w-full rounded-md border-gray-300 shadow-sm focus:border-orange-500 focus:ring-orange-500 sm:text-sm"
-                                  >
-                                    <option value="none">なし</option>
-                                    <option value="view">閲覧</option>
-                                    <option value="edit">編集</option>
-                                    <option value="admin">管理</option>
-                                  </select>
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* システム設定 */}
-                            <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                              <div className="flex items-center mb-2">
-                                <div className="w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center mr-3">
-                                  <svg className="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                  </svg>
-                                </div>
-                                <h5 className="font-semibold text-gray-900">システム設定</h5>
-                              </div>
-                              <p className="text-xs text-gray-500 mb-3 ml-11">会社情報・ロール・パートナー会社の管理</p>
-                              <div className="grid grid-cols-2 gap-4">
-                                <div className="col-span-2">
-                                  <label className="block text-sm font-medium text-gray-700 mb-1">権限レベル</label>
-                                  <select
-                                    value={selectedRole.permissions.systemSettings?.level || 'none'}
-                                    onChange={(e) => setSelectedRole({
-                                      ...selectedRole,
-                                      permissions: {
-                                        ...selectedRole.permissions,
-                                        systemSettings: {
-                                          level: e.target.value
-                                        },
-                                      },
-                                    })}
-                                    className="w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 sm:text-sm"
-                                  >
-                                    <option value="none">なし</option>
-                                    <option value="view">閲覧</option>
-                                    <option value="admin">管理</option>
-                                  </select>
-                                </div>
-                              </div>
-                            </div>
+                      {/* 権限設定（簡素化版） */}
+                      <div className="border-t pt-6">
+                        <h4 className="text-lg font-semibold mb-4 text-gray-900">権限設定</h4>
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                          <p className="text-sm text-blue-800 font-medium mb-2">権限設定の説明</p>
+                          <div className="text-xs text-blue-700 space-y-1">
+                            <p><span className="font-semibold">対象範囲:</span> 自分のみ（自分のデータのみ）/ 担当者（管理対象のユーザー）/ 会社内（同一パートナー会社）/ 全員（全ユーザー）</p>
+                            <p><span className="font-semibold">権限レベル:</span> なし（アクセス不可）/ 閲覧（データの表示のみ）/ 編集（データの追加・変更）/ 管理（削除・承認・ロック解除等の管理操作）</p>
                           </div>
                         </div>
 
-                        {/* ページアクセス権限 */}
-                        <div className="border-t pt-6">
-                          <div className="flex items-center mb-4">
-                            <div className="w-8 h-8 bg-indigo-100 rounded-lg flex items-center justify-center mr-3">
-                              <svg className="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                              </svg>
+                        <div className="space-y-4">
+                          {/* ユーザー管理 */}
+                          <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                            <div className="flex items-center mb-2">
+                              <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center mr-3">
+                                <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
+                                </svg>
+                              </div>
+                              <h5 className="font-semibold text-gray-900">ユーザー管理</h5>
                             </div>
-                            <div>
-                              <h4 className="font-semibold text-gray-900">ページアクセス権限</h4>
-                              <p className="text-sm text-gray-600">各ページへのアクセス可否を設定</p>
+                            <p className="text-xs text-gray-500 mb-3 ml-11">スタッフの登録・編集・削除、プロフィール情報の管理</p>
+                            <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">対象範囲</label>
+                                <select
+                                  value={selectedRole.permissions.userManagement?.scope || 'self'}
+                                  onChange={(e) => setSelectedRole({
+                                    ...selectedRole,
+                                    permissions: {
+                                      ...selectedRole.permissions,
+                                      userManagement: {
+                                        ...selectedRole.permissions.userManagement,
+                                        scope: e.target.value
+                                      },
+                                    },
+                                  })}
+                                  className="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                                >
+                                  <option value="self">自分のみ</option>
+                                  <option value="assigned">担当者</option>
+                                  <option value="company">会社内</option>
+                                  <option value="all">全員</option>
+                                </select>
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">権限レベル</label>
+                                <select
+                                  value={selectedRole.permissions.userManagement?.level || 'none'}
+                                  onChange={(e) => setSelectedRole({
+                                    ...selectedRole,
+                                    permissions: {
+                                      ...selectedRole.permissions,
+                                      userManagement: {
+                                        ...selectedRole.permissions.userManagement,
+                                        level: e.target.value
+                                      },
+                                    },
+                                  })}
+                                  className="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                                >
+                                  <option value="none">なし</option>
+                                  <option value="view">閲覧</option>
+                                  <option value="edit">編集</option>
+                                  <option value="admin">管理</option>
+                                </select>
+                              </div>
                             </div>
                           </div>
 
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {/* 基本機能 */}
-                            <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                              <div className="flex items-center mb-3">
-                                <div className="w-6 h-6 bg-blue-100 rounded flex items-center justify-center mr-2">
-                                  <svg className="w-3 h-3 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2H5a2 2 0 00-2-2z" />
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5a2 2 0 012-2h4a2 2 0 012 2v2H8V5z" />
-                                  </svg>
-                                </div>
-                                <h5 className="font-medium text-gray-800">基本機能</h5>
+                          {/* シフト管理 */}
+                          <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                            <div className="flex items-center mb-2">
+                              <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center mr-3">
+                                <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                </svg>
                               </div>
-                              <div className="space-y-2">
-                                {["dashboard", "attendance", "attendanceHistory"].map((key) => (
-                                  <label key={key} className="flex items-start space-x-3 p-2 rounded hover:bg-white transition-colors">
-                                    <input
-                                      type="checkbox"
-                                      checked={selectedRole.pageAccess[key as keyof typeof selectedRole.pageAccess] as boolean}
-                                      onChange={(e) => setSelectedRole({
-                                        ...selectedRole,
-                                        pageAccess: {
-                                          ...selectedRole.pageAccess,
-                                          [key]: e.target.checked,
-                                        },
-                                      })}
-                                      className="mt-0.5 rounded border-gray-300 text-indigo-600 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
-                                    />
-                                    <div className="flex-1 min-w-0">
-                                      <div className="text-sm font-medium text-gray-700">
-                                        {key === "dashboard" && "ダッシュボード"}
-                                        {key === "attendance" && "打刻"}
-                                        {key === "attendanceHistory" && "勤怠履歴"}
-                                      </div>
-                                      <div className="text-xs text-gray-500">
-                                        {key === "dashboard" && "メイン画面への接続"}
-                                        {key === "attendance" && "出退勤打刻機能"}
-                                        {key === "attendanceHistory" && "個人の勤怠履歴確認"}
-                                      </div>
-                                    </div>
-                                  </label>
-                                ))}
+                              <h5 className="font-semibold text-gray-900">シフト管理</h5>
+                            </div>
+                            <p className="text-xs text-gray-500 mb-3 ml-11">シフトの閲覧・登録・編集・承認・ロック管理</p>
+                            <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">対象範囲</label>
+                                <select
+                                  value={selectedRole.permissions.shiftManagement?.scope || 'self'}
+                                  onChange={(e) => setSelectedRole({
+                                    ...selectedRole,
+                                    permissions: {
+                                      ...selectedRole.permissions,
+                                      shiftManagement: {
+                                        ...selectedRole.permissions.shiftManagement,
+                                        scope: e.target.value
+                                      },
+                                    },
+                                  })}
+                                  className="w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                                >
+                                  <option value="self">自分のみ</option>
+                                  <option value="assigned">担当者</option>
+                                  <option value="company">会社内</option>
+                                  <option value="all">全員</option>
+                                </select>
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">権限レベル</label>
+                                <select
+                                  value={selectedRole.permissions.shiftManagement?.level || 'none'}
+                                  onChange={(e) => setSelectedRole({
+                                    ...selectedRole,
+                                    permissions: {
+                                      ...selectedRole.permissions,
+                                      shiftManagement: {
+                                        ...selectedRole.permissions.shiftManagement,
+                                        level: e.target.value
+                                      },
+                                    },
+                                  })}
+                                  className="w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                                >
+                                  <option value="none">なし</option>
+                                  <option value="view">閲覧</option>
+                                  <option value="edit">編集</option>
+                                  <option value="admin">管理</option>
+                                </select>
                               </div>
                             </div>
+                          </div>
 
-                            {/* シフト管理 */}
-                            <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                              <div className="flex items-center mb-3">
-                                <div className="w-6 h-6 bg-green-100 rounded flex items-center justify-center mr-2">
-                                  <svg className="w-3 h-3 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2-2v16a2 2 0 002 2z" />
-                                  </svg>
-                                </div>
-                                <h5 className="font-medium text-gray-800">シフト管理</h5>
+                          {/* 勤怠管理 */}
+                          <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                            <div className="flex items-center mb-2">
+                              <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center mr-3">
+                                <svg className="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
                               </div>
-                              <div className="space-y-2">
-                                {["shiftRequest", "shiftWorkers", "shiftOverview", "shiftRegister", "shiftLock"].map((key) => (
-                                  <label key={key} className="flex items-start space-x-3 p-2 rounded hover:bg-white transition-colors">
-                                    <input
-                                      type="checkbox"
-                                      checked={selectedRole.pageAccess[key as keyof typeof selectedRole.pageAccess] as boolean}
-                                      onChange={(e) => setSelectedRole({
-                                        ...selectedRole,
-                                        pageAccess: {
-                                          ...selectedRole.pageAccess,
-                                          [key]: e.target.checked,
-                                        },
-                                      })}
-                                      className="mt-0.5 rounded border-gray-300 text-indigo-600 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
-                                    />
-                                    <div className="flex-1 min-w-0">
-                                      <div className="text-sm font-medium text-gray-700">
-                                        {key === "shiftRequest" && "シフト申請"}
-                                        {key === "shiftWorkers" && "出勤者管理"}
-                                        {key === "shiftOverview" && "シフト一覧"}
-                                        {key === "shiftRegister" && "シフト登録"}
-                                        {key === "shiftLock" && "登録ロック管理"}
-                                      </div>
-                                      <div className="text-xs text-gray-500">
-                                        {key === "shiftRequest" && "個人のシフト希望申請"}
-                                        {key === "shiftWorkers" && "本日の出勤者確認"}
-                                        {key === "shiftOverview" && "全体のシフト状況確認"}
-                                        {key === "shiftRegister" && "シフト登録・編集"}
-                                        {key === "shiftLock" && "シフト登録のロック制御"}
-                                      </div>
-                                    </div>
-                                  </label>
-                                ))}
+                              <h5 className="font-semibold text-gray-900">勤怠管理</h5>
+                            </div>
+                            <p className="text-xs text-gray-500 mb-3 ml-11">勤怠記録の閲覧・編集・代理打刻・レポート出力</p>
+                            <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">対象範囲</label>
+                                <select
+                                  value={selectedRole.permissions.attendanceManagement?.scope || 'self'}
+                                  onChange={(e) => setSelectedRole({
+                                    ...selectedRole,
+                                    permissions: {
+                                      ...selectedRole.permissions,
+                                      attendanceManagement: {
+                                        ...selectedRole.permissions.attendanceManagement,
+                                        scope: e.target.value
+                                      },
+                                    },
+                                  })}
+                                  className="w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
+                                >
+                                  <option value="self">自分のみ</option>
+                                  <option value="assigned">担当者</option>
+                                  <option value="company">会社内</option>
+                                  <option value="all">全員</option>
+                                </select>
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">権限レベル</label>
+                                <select
+                                  value={selectedRole.permissions.attendanceManagement?.level || 'none'}
+                                  onChange={(e) => setSelectedRole({
+                                    ...selectedRole,
+                                    permissions: {
+                                      ...selectedRole.permissions,
+                                      attendanceManagement: {
+                                        ...selectedRole.permissions.attendanceManagement,
+                                        level: e.target.value
+                                      },
+                                    },
+                                  })}
+                                  className="w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
+                                >
+                                  <option value="none">なし</option>
+                                  <option value="view">閲覧</option>
+                                  <option value="edit">編集</option>
+                                  <option value="admin">管理</option>
+                                </select>
                               </div>
                             </div>
+                          </div>
 
-                            {/* 経費管理 */}
-                            <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                              <div className="flex items-center mb-3">
-                                <div className="w-6 h-6 bg-orange-100 rounded flex items-center justify-center mr-2">
-                                  <svg className="w-3 h-3 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
-                                  </svg>
-                                </div>
-                                <h5 className="font-medium text-gray-800">経費管理</h5>
+                          {/* 経費管理 */}
+                          <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                            <div className="flex items-center mb-2">
+                              <div className="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center mr-3">
+                                <svg className="w-4 h-4 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                                </svg>
                               </div>
-                              <div className="space-y-2">
-                                {["expense", "expenseMonthly", "expenseLock"].map((key) => (
-                                  <label key={key} className="flex items-start space-x-3 p-2 rounded hover:bg-white transition-colors">
-                                    <input
-                                      type="checkbox"
-                                      checked={selectedRole.pageAccess[key as keyof typeof selectedRole.pageAccess] as boolean}
-                                      onChange={(e) => setSelectedRole({
-                                        ...selectedRole,
-                                        pageAccess: {
-                                          ...selectedRole.pageAccess,
-                                          [key]: e.target.checked,
-                                        },
-                                      })}
-                                      className="mt-0.5 rounded border-gray-300 text-indigo-600 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
-                                    />
-                                    <div className="flex-1 min-w-0">
-                                      <div className="text-sm font-medium text-gray-700">
-                                        {key === "expense" && "経費申請"}
-                                        {key === "expenseMonthly" && "月次経費一覧"}
-                                        {key === "expenseLock" && "経費ロック管理"}
-                                      </div>
-                                      <div className="text-xs text-gray-500">
-                                        {key === "expense" && "交通費・経費の申請登録"}
-                                        {key === "expenseMonthly" && "月別経費一覧・管理"}
-                                        {key === "expenseLock" && "経費登録のロック制御"}
-                                      </div>
-                                    </div>
-                                  </label>
-                                ))}
+                              <h5 className="font-semibold text-gray-900">経費管理</h5>
+                            </div>
+                            <p className="text-xs text-gray-500 mb-3 ml-11">経費・定期代の閲覧・承認・ロック・締切無視</p>
+                            <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">対象範囲</label>
+                                <select
+                                  value={selectedRole.permissions.expenseManagement?.scope || 'self'}
+                                  onChange={(e) => setSelectedRole({
+                                    ...selectedRole,
+                                    permissions: {
+                                      ...selectedRole.permissions,
+                                      expenseManagement: {
+                                        ...selectedRole.permissions.expenseManagement,
+                                        scope: e.target.value
+                                      },
+                                    },
+                                  })}
+                                  className="w-full rounded-md border-gray-300 shadow-sm focus:border-orange-500 focus:ring-orange-500 sm:text-sm"
+                                >
+                                  <option value="self">自分のみ</option>
+                                  <option value="assigned">担当者</option>
+                                  <option value="company">会社内</option>
+                                  <option value="all">全員</option>
+                                </select>
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">権限レベル</label>
+                                <select
+                                  value={selectedRole.permissions.expenseManagement?.level || 'none'}
+                                  onChange={(e) => setSelectedRole({
+                                    ...selectedRole,
+                                    permissions: {
+                                      ...selectedRole.permissions,
+                                      expenseManagement: {
+                                        ...selectedRole.permissions.expenseManagement,
+                                        level: e.target.value
+                                      },
+                                    },
+                                  })}
+                                  className="w-full rounded-md border-gray-300 shadow-sm focus:border-orange-500 focus:ring-orange-500 sm:text-sm"
+                                >
+                                  <option value="none">なし</option>
+                                  <option value="view">閲覧</option>
+                                  <option value="edit">編集</option>
+                                  <option value="admin">管理</option>
+                                </select>
                               </div>
                             </div>
+                          </div>
 
-                            {/* レポート・管理機能 */}
-                            <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                              <div className="flex items-center mb-3">
-                                <div className="w-6 h-6 bg-purple-100 rounded flex items-center justify-center mr-2">
-                                  <svg className="w-3 h-3 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                                  </svg>
-                                </div>
-                                <h5 className="font-medium text-gray-800">レポート・管理</h5>
+                          {/* システム設定 */}
+                          <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                            <div className="flex items-center mb-2">
+                              <div className="w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center mr-3">
+                                <svg className="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                </svg>
                               </div>
-                              <div className="space-y-2">
-                                {["reports", "adminUsers", "adminPartners", "adminSystem", "bulkEdit"].map((key) => (
-                                  <label key={key} className="flex items-start space-x-3 p-2 rounded hover:bg-white transition-colors">
-                                    <input
-                                      type="checkbox"
-                                      checked={selectedRole.pageAccess[key as keyof typeof selectedRole.pageAccess] as boolean}
-                                      onChange={(e) => setSelectedRole({
-                                        ...selectedRole,
-                                        pageAccess: {
-                                          ...selectedRole.pageAccess,
-                                          [key]: e.target.checked,
-                                        },
-                                      })}
-                                      className="mt-0.5 rounded border-gray-300 text-indigo-600 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
-                                    />
-                                    <div className="flex-1 min-w-0">
-                                      <div className="text-sm font-medium text-gray-700">
-                                        {key === "reports" && "レポート"}
-                                        {key === "adminUsers" && "ユーザー管理"}
-                                        {key === "adminPartners" && "パートナー管理"}
-                                        {key === "adminSystem" && "システム管理"}
-                                        {key === "bulkEdit" && "一括修正管理"}
-                                      </div>
-                                      <div className="text-xs text-gray-500">
-                                        {key === "reports" && "勤怠・経費レポートの閲覧"}
-                                        {key === "adminUsers" && "ユーザー情報の管理"}
-                                        {key === "adminPartners" && "パートナー企業の管理"}
-                                        {key === "adminSystem" && "システム設定・ロール管理"}
-                                        {key === "bulkEdit" && "勤怠・シフト・経費の一括修正"}
-                                      </div>
-                                    </div>
-                                  </label>
-                                ))}
+                              <h5 className="font-semibold text-gray-900">システム設定</h5>
+                            </div>
+                            <p className="text-xs text-gray-500 mb-3 ml-11">会社情報・ロール・パートナー会社の管理</p>
+                            <div className="grid grid-cols-2 gap-4">
+                              <div className="col-span-2">
+                                <label className="block text-sm font-medium text-gray-700 mb-1">権限レベル</label>
+                                <select
+                                  value={selectedRole.permissions.systemSettings?.level || 'none'}
+                                  onChange={(e) => setSelectedRole({
+                                    ...selectedRole,
+                                    permissions: {
+                                      ...selectedRole.permissions,
+                                      systemSettings: {
+                                        level: e.target.value
+                                      },
+                                    },
+                                  })}
+                                  className="w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 sm:text-sm"
+                                >
+                                  <option value="none">なし</option>
+                                  <option value="view">閲覧</option>
+                                  <option value="admin">管理</option>
+                                </select>
                               </div>
                             </div>
                           </div>
                         </div>
                       </div>
 
-                      {/* Sticky Footer with Save/Cancel buttons */}
+                      {/* ページアクセス権限 */}
+                      <div className="border-t pt-6">
+                        <div className="flex items-center mb-4">
+                          <div className="w-8 h-8 bg-indigo-100 rounded-lg flex items-center justify-center mr-3">
+                            <svg className="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                          </div>
+                          <div>
+                            <h4 className="font-semibold text-gray-900">ページアクセス権限</h4>
+                            <p className="text-sm text-gray-600">各ページへのアクセス可否を設定</p>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {/* 基本機能 */}
+                          <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                            <div className="flex items-center mb-3">
+                              <div className="w-6 h-6 bg-blue-100 rounded flex items-center justify-center mr-2">
+                                <svg className="w-3 h-3 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2H5a2 2 0 00-2-2z" />
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5a2 2 0 012-2h4a2 2 0 012 2v2H8V5z" />
+                                </svg>
+                              </div>
+                              <h5 className="font-medium text-gray-800">基本機能</h5>
+                            </div>
+                            <div className="space-y-2">
+                              {["dashboard", "attendance", "attendanceHistory"].map((key) => (
+                                <label key={key} className="flex items-start space-x-3 p-2 rounded hover:bg-white transition-colors">
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedRole.pageAccess[key as keyof typeof selectedRole.pageAccess] as boolean}
+                                    onChange={(e) => setSelectedRole({
+                                      ...selectedRole,
+                                      pageAccess: {
+                                        ...selectedRole.pageAccess,
+                                        [key]: e.target.checked,
+                                      },
+                                    })}
+                                    className="mt-0.5 rounded border-gray-300 text-indigo-600 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+                                  />
+                                  <div className="flex-1 min-w-0">
+                                    <div className="text-sm font-medium text-gray-700">
+                                      {key === "dashboard" && "ダッシュボード"}
+                                      {key === "attendance" && "打刻"}
+                                      {key === "attendanceHistory" && "勤怠履歴"}
+                                    </div>
+                                    <div className="text-xs text-gray-500">
+                                      {key === "dashboard" && "メイン画面への接続"}
+                                      {key === "attendance" && "出退勤打刻機能"}
+                                      {key === "attendanceHistory" && "個人の勤怠履歴確認"}
+                                    </div>
+                                  </div>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* シフト管理 */}
+                          <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                            <div className="flex items-center mb-3">
+                              <div className="w-6 h-6 bg-green-100 rounded flex items-center justify-center mr-2">
+                                <svg className="w-3 h-3 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2-2v16a2 2 0 002 2z" />
+                                </svg>
+                              </div>
+                              <h5 className="font-medium text-gray-800">シフト管理</h5>
+                            </div>
+                            <div className="space-y-2">
+                              {["shiftRequest", "shiftWorkers", "shiftOverview", "shiftRegister", "shiftLock"].map((key) => (
+                                <label key={key} className="flex items-start space-x-3 p-2 rounded hover:bg-white transition-colors">
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedRole.pageAccess[key as keyof typeof selectedRole.pageAccess] as boolean}
+                                    onChange={(e) => setSelectedRole({
+                                      ...selectedRole,
+                                      pageAccess: {
+                                        ...selectedRole.pageAccess,
+                                        [key]: e.target.checked,
+                                      },
+                                    })}
+                                    className="mt-0.5 rounded border-gray-300 text-indigo-600 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+                                  />
+                                  <div className="flex-1 min-w-0">
+                                    <div className="text-sm font-medium text-gray-700">
+                                      {key === "shiftRequest" && "シフト申請"}
+                                      {key === "shiftWorkers" && "出勤者管理"}
+                                      {key === "shiftOverview" && "シフト一覧"}
+                                      {key === "shiftRegister" && "シフト登録"}
+                                      {key === "shiftLock" && "登録ロック管理"}
+                                    </div>
+                                    <div className="text-xs text-gray-500">
+                                      {key === "shiftRequest" && "個人のシフト希望申請"}
+                                      {key === "shiftWorkers" && "本日の出勤者確認"}
+                                      {key === "shiftOverview" && "全体のシフト状況確認"}
+                                      {key === "shiftRegister" && "シフト登録・編集"}
+                                      {key === "shiftLock" && "シフト登録のロック制御"}
+                                    </div>
+                                  </div>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* 経費管理 */}
+                          <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                            <div className="flex items-center mb-3">
+                              <div className="w-6 h-6 bg-orange-100 rounded flex items-center justify-center mr-2">
+                                <svg className="w-3 h-3 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                                </svg>
+                              </div>
+                              <h5 className="font-medium text-gray-800">経費管理</h5>
+                            </div>
+                            <div className="space-y-2">
+                              {["expense", "expenseMonthly", "expenseLock"].map((key) => (
+                                <label key={key} className="flex items-start space-x-3 p-2 rounded hover:bg-white transition-colors">
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedRole.pageAccess[key as keyof typeof selectedRole.pageAccess] as boolean}
+                                    onChange={(e) => setSelectedRole({
+                                      ...selectedRole,
+                                      pageAccess: {
+                                        ...selectedRole.pageAccess,
+                                        [key]: e.target.checked,
+                                      },
+                                    })}
+                                    className="mt-0.5 rounded border-gray-300 text-indigo-600 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+                                  />
+                                  <div className="flex-1 min-w-0">
+                                    <div className="text-sm font-medium text-gray-700">
+                                      {key === "expense" && "経費申請"}
+                                      {key === "expenseMonthly" && "月次経費一覧"}
+                                      {key === "expenseLock" && "経費ロック管理"}
+                                    </div>
+                                    <div className="text-xs text-gray-500">
+                                      {key === "expense" && "交通費・経費の申請登録"}
+                                      {key === "expenseMonthly" && "月別経費一覧・管理"}
+                                      {key === "expenseLock" && "経費登録のロック制御"}
+                                    </div>
+                                  </div>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* レポート・管理機能 */}
+                          <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                            <div className="flex items-center mb-3">
+                              <div className="w-6 h-6 bg-purple-100 rounded flex items-center justify-center mr-2">
+                                <svg className="w-3 h-3 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                                </svg>
+                              </div>
+                              <h5 className="font-medium text-gray-800">レポート・管理</h5>
+                            </div>
+                            <div className="space-y-2">
+                              {["reports", "adminUsers", "adminPartners", "adminSystem", "bulkEdit"].map((key) => (
+                                <label key={key} className="flex items-start space-x-3 p-2 rounded hover:bg-white transition-colors">
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedRole.pageAccess[key as keyof typeof selectedRole.pageAccess] as boolean}
+                                    onChange={(e) => setSelectedRole({
+                                      ...selectedRole,
+                                      pageAccess: {
+                                        ...selectedRole.pageAccess,
+                                        [key]: e.target.checked,
+                                      },
+                                    })}
+                                    className="mt-0.5 rounded border-gray-300 text-indigo-600 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+                                  />
+                                  <div className="flex-1 min-w-0">
+                                    <div className="text-sm font-medium text-gray-700">
+                                      {key === "reports" && "レポート"}
+                                      {key === "adminUsers" && "ユーザー管理"}
+                                      {key === "adminPartners" && "パートナー管理"}
+                                      {key === "adminSystem" && "システム管理"}
+                                      {key === "bulkEdit" && "一括修正管理"}
+                                    </div>
+                                    <div className="text-xs text-gray-500">
+                                      {key === "reports" && "勤怠・経費レポートの閲覧"}
+                                      {key === "adminUsers" && "ユーザー情報の管理"}
+                                      {key === "adminPartners" && "パートナー企業の管理"}
+                                      {key === "adminSystem" && "システム設定・ロール管理"}
+                                      {key === "bulkEdit" && "勤怠・シフト・経費の一括修正"}
+                                    </div>
+                                  </div>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                     </div>
 
                     {/* Fixed Footer with Save/Cancel buttons */}
@@ -1032,9 +1057,8 @@ export default function SystemAdminPage() {
               )}
             </div>
           </main>
-        </div>
-      </div>
-
-    </PageAccessGuard>
+        </div >
+      </div >
+    </PageAccessGuard >
   );
 }

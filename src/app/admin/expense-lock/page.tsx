@@ -84,6 +84,7 @@ export default function AdminExpenseLockPage() {
     const navigateMonth = (direction: number) => {
         setCurrentMonth(prev => {
             const newMonth = new Date(prev);
+            newMonth.setDate(1);
             newMonth.setMonth(prev.getMonth() + direction);
             return newMonth;
         });
@@ -136,14 +137,14 @@ export default function AdminExpenseLockPage() {
                             <div className="flex justify-center items-center space-x-4 mb-6">
                                 <button
                                     onClick={() => navigateMonth(-1)}
-                                    className="p-2 text-gray-400 hover:text-gray-600"
+                                    className="p-2 text-gray-900 hover:text-gray-600"
                                 >
                                     ← 前月
                                 </button>
-                                <h2 className="text-lg font-medium">{formatMonth(currentMonth)}</h2>
+                                <h2 className="text-lg font-medium text-gray-900">{formatMonth(currentMonth)}</h2>
                                 <button
                                     onClick={() => navigateMonth(1)}
-                                    className="p-2 text-gray-400 hover:text-gray-600"
+                                    className="p-2 text-gray-900 hover:text-gray-600"
                                 >
                                     次月 →
                                 </button>
@@ -179,16 +180,16 @@ export default function AdminExpenseLockPage() {
                                 <table className="min-w-full divide-y divide-gray-200">
                                     <thead className="bg-gray-50">
                                         <tr>
-                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
                                                 ユーザー
                                             </th>
-                                            <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                            <th className="px-6 py-3 text-center text-xs font-medium text-gray-700 uppercase tracking-wider">
                                                 登録状態
                                             </th>
-                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
                                                 ロック解除情報
                                             </th>
-                                            <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                            <th className="px-6 py-3 text-center text-xs font-medium text-gray-700 uppercase tracking-wider">
                                                 操作
                                             </th>
                                         </tr>
@@ -201,7 +202,7 @@ export default function AdminExpenseLockPage() {
                                                         <div className="text-sm font-medium text-gray-900">
                                                             {user.userName}
                                                         </div>
-                                                        <div className="text-sm text-gray-500">
+                                                        <div className="text-sm text-gray-700">
                                                             {user.email}
                                                         </div>
                                                     </div>
@@ -219,13 +220,13 @@ export default function AdminExpenseLockPage() {
                                                         <div>
                                                             <div className="text-green-600 font-medium">一時解除中</div>
                                                             {user.unlockedAt && (
-                                                                <div className="text-xs text-gray-500">
+                                                                <div className="text-xs text-gray-700">
                                                                     解除日時: {new Date(user.unlockedAt).toLocaleString('ja-JP')}
                                                                 </div>
                                                             )}
                                                         </div>
                                                     ) : (
-                                                        <span className="text-gray-500">-</span>
+                                                        <span className="text-gray-700">-</span>
                                                     )}
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
@@ -248,7 +249,7 @@ export default function AdminExpenseLockPage() {
                                                             )}
                                                         </div>
                                                     ) : (
-                                                        <span className="text-gray-400">期限内</span>
+                                                        <span className="text-gray-900">期限内</span>
                                                     )}
                                                 </td>
                                             </tr>

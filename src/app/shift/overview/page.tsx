@@ -5,6 +5,7 @@ import { useAuth } from "@/components/AuthProvider";
 import TimeBaseHeader from '@/components/TimeBaseHeader';
 import PageAccessGuard from "@/components/PageAccessGuard";
 import { showAlert, showConfirm } from '@/lib/notification';
+import { hasUserPermission, canManageUser } from '@/lib/clientPermissions';
 
 interface Shift {
   id: string;
@@ -25,6 +26,7 @@ interface User {
   userId?: string;
   email?: string;
   defaultLocation?: string;
+  customRole?: { rank?: number; name?: string };
 }
 
 interface UserPermissions {
@@ -116,7 +118,7 @@ export default function ShiftOverviewPage() {
   const fetchUsers = async () => {
     try {
       console.log("ユーザーAPI呼び出し開始: /api/admin/users");
-      const response = await fetch("/api/admin/users");
+      const response = await fetch("/api/admin/users?details=true");
       if (response.ok) {
         const data = await response.json();
         console.log("ユーザーAPIレスポンス:", data);
@@ -147,6 +149,7 @@ export default function ShiftOverviewPage() {
   const navigateMonth = (direction: number) => {
     setCurrentMonth(prev => {
       const newMonth = new Date(prev);
+      newMonth.setDate(1);
       newMonth.setMonth(prev.getMonth() + direction);
       return newMonth;
     });
@@ -180,6 +183,8 @@ export default function ShiftOverviewPage() {
 
   // シフトセルクリック処理
   const handleShiftCellClick = (user: User, date: Date, shift?: Shift) => {
+    if (!currentUser) return;
+
     // 既存シフトの編集時は権限チェック
     if (shift && !canModifyShift(shift)) {
       showAlert("このシフトを編集する権限がありません");
@@ -190,6 +195,11 @@ export default function ShiftOverviewPage() {
     if (!shift && user.id !== currentUser?.id) {
       if (!canCreateShiftForOthers()) {
         showAlert("他のユーザーのシフトを作成する権限がありません");
+        return;
+      }
+      // ランクチェック
+      if (!canManageUser(currentUser, user as any)) {
+        showAlert("このユーザーのシフトを作成する権限がありません（ランク制限）");
         return;
       }
     }
@@ -230,7 +240,7 @@ export default function ShiftOverviewPage() {
   const handleSaveShift = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!selectedUser || !selectedDate) return;
+    if (!currentUser || !selectedUser || !selectedDate) return;
 
     // 既存シフトの編集時は権限チェック
     if (!isNewShift && selectedShift && !canModifyShift(selectedShift)) {
@@ -242,6 +252,11 @@ export default function ShiftOverviewPage() {
     if (isNewShift && selectedUser.id !== currentUser?.id) {
       if (!canCreateShiftForOthers()) {
         showAlert("他のユーザーのシフトを作成する権限がありません");
+        return;
+      }
+      // ランクチェック
+      if (!canManageUser(currentUser, selectedUser as any)) {
+        showAlert("このユーザーのシフトを作成する権限がありません（ランク制限）");
         return;
       }
     }
@@ -326,21 +341,33 @@ export default function ShiftOverviewPage() {
       return true;
     }
 
+    // 他人のシフトを編集する場合、ランクチェックを行う
+    const targetUser = users.find(u => u.id === shift.userId);
+    if (targetUser && !canManageUser(currentUser, targetUser as any)) {
+      return false;
+    }
+
     // 他人のシフトを編集する権限があるかチェック
     return canEditOthersShifts();
   };
 
   const canCreateShiftForOthers = () => {
-    if (!userPermissions) return false;
-    return userPermissions.shiftManagement?.viewAll ||
-      userPermissions.shiftManagement?.edit ||
-      userPermissions.shiftManagement?.forcedRegister;
+    // 権限チェックのためのユーザーオブジェクトを準備
+    const checkUser = userPermissions ? { ...currentUser, customRole: { ...(currentUser?.customRole || {}), permissions: userPermissions } } as any : currentUser;
+    if (!checkUser) return false;
+
+    // viewAll（閲覧権限）は編集・作成権限ではないため削除
+    return hasUserPermission(checkUser, 'shiftManagement', 'editOthers') ||
+      hasUserPermission(checkUser, 'shiftManagement', 'forcedRegister');
   };
 
   const canEditOthersShifts = () => {
-    if (!userPermissions) return false;
-    return userPermissions.shiftManagement?.viewAll ||
-      userPermissions.shiftManagement?.edit;
+    // 権限チェックのためのユーザーオブジェクトを準備
+    const checkUser = userPermissions ? { ...currentUser, customRole: { ...(currentUser?.customRole || {}), permissions: userPermissions } } as any : currentUser;
+    if (!checkUser) return false;
+
+    // viewAll（閲覧権限）は編集権限ではないため削除
+    return hasUserPermission(checkUser, 'shiftManagement', 'editOthers');
   };
 
   // ログインチェック
@@ -435,14 +462,14 @@ export default function ShiftOverviewPage() {
               <div className="flex justify-center items-center space-x-4 mb-6">
                 <button
                   onClick={() => navigateMonth(-1)}
-                  className="p-2 text-gray-400 hover:text-gray-600"
+                  className="p-2 text-gray-900 hover:text-blue-600"
                 >
                   ← 前月
                 </button>
-                <h2 className="text-lg font-medium">{formatMonth(currentMonth)}</h2>
+                <h2 className="text-lg font-medium text-gray-900">{formatMonth(currentMonth)}</h2>
                 <button
                   onClick={() => navigateMonth(1)}
-                  className="p-2 text-gray-400 hover:text-gray-600"
+                  className="p-2 text-gray-900 hover:text-blue-600"
                 >
                   次月 →
                 </button>
@@ -488,7 +515,7 @@ export default function ShiftOverviewPage() {
                           <td className="py-3 px-4 font-medium text-gray-900 bg-white sticky left-0 z-10 border-r border-gray-200">
                             <div>
                               <div className="font-medium">{user.name}</div>
-                              <div className="text-xs text-gray-500">{user.email}</div>
+                              <div className="text-xs text-gray-500">{user.userId || user.email}</div>
                             </div>
                           </td>
                           <td className="py-3 px-4 text-sm text-gray-600 bg-white sticky left-[200px] z-10 border-r border-gray-200">

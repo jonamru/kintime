@@ -6,7 +6,7 @@ import PageAccessGuard from "@/components/PageAccessGuard";
 import TimeBaseHeader from "@/components/TimeBaseHeader";
 import { showAlert, showNotification } from '@/lib/notification';
 import UserSearchCombobox from '@/components/UserSearchCombobox';
-import { hasUserPermission } from '@/lib/clientPermissions';
+import { hasUserPermission, canManageUser } from '@/lib/clientPermissions';
 interface Attendance {
   id: string;
   userId: string;
@@ -38,6 +38,7 @@ interface User {
   name: string;
   userId: string;
   email?: string;
+  customRole?: { rank?: number; name?: string };
 }
 
 export default function AttendanceHistoryPage() {
@@ -68,7 +69,7 @@ export default function AttendanceHistoryPage() {
 
   useEffect(() => {
     // ページタイトルを設定
-    document.title = "TimeBase - 勤怠履歴";
+    document.title = "TimeBase - 業務履歴";
     fetchUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -92,7 +93,7 @@ export default function AttendanceHistoryPage() {
 
   const fetchUsers = async () => {
     try {
-      const response = await fetch("/api/admin/users");
+      const response = await fetch("/api/admin/users?details=true");
       if (response.ok) {
         const data = await response.json();
         console.log("管理者用ユーザーデータ:", data);
@@ -458,6 +459,17 @@ export default function AttendanceHistoryPage() {
   const daysInMonth = getDaysInMonth(year, month);
   const allDates = Array.from({ length: daysInMonth }, (_, i) => i + 1);
 
+  // ターゲットユーザーが操作可能かチェック
+  const targetUserObj = selectedUserId ? users.find(u => u.id === selectedUserId) : currentUser;
+  // 自分自身の場合は常に編集可能とみなす（ベースの権限チェックは別途あり）、他人の場合はランクチェック
+  // ただし、自分自身であっても canManageUser は true を返す想定だが、ターゲットオブジェクトが不完全な場合を考慮
+  const isTargetManageable = targetUserObj && currentUser
+    ? (targetUserObj.id === currentUser.id || canManageUser(currentUser, targetUserObj as any))
+    : true;
+
+  // 編集ボタンを表示するかどうかの最終フラグ
+  const showEditControls = canEdit && isTargetManageable;
+
   return (
     <PageAccessGuard page="attendanceHistory">
       <TimeBaseHeader
@@ -550,7 +562,7 @@ export default function AttendanceHistoryPage() {
                         <th className="py-3 px-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                           退勤時刻
                         </th>
-                        {canEdit && (
+                        {showEditControls && (
                           <th className="py-3 px-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                             操作
                           </th>
@@ -696,7 +708,7 @@ export default function AttendanceHistoryPage() {
                             </td>
 
                             {/* 操作カラム */}
-                            {canEdit && (
+                            {showEditControls && (
                               <td className="py-4 px-4 whitespace-nowrap text-center">
                                 <button
                                   onClick={() => openBulkEditModal(day)}

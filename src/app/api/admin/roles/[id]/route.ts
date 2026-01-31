@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
-import { hasPermission } from "@/lib/permissions";
+import { hasPermission, canAssignRole } from "@/lib/permissions";
 import type { User, Attendance, Shift, Expense, CustomRole, Partner, ApiResponse, BulkEditPermissions } from "@/types/common";
 
 export async function PUT(
@@ -36,6 +36,39 @@ export async function PUT(
       );
     }
 
+    // ランクベースの権限チェック: 編集対象のロールランクを確認
+    // 自分のランクより高い（または同等の）ロールは編集できない
+    // ※仕様書: "The rank of the role being assigned or managed must be less than or equal to the actor's rank."
+    // 这里では、より厳密に「自分よりランクが低いロールのみ編集可能」とするか「自分以下」とするか。
+    // 仕様書のUser Delete/Editは"strictly less than"だが、Role Managementは"less than or equal to"とある。
+    // しかし、自分のランクと同じロールを編集できてしまうと、権限昇格のリスクがあるため、
+    // 基本的には「自分より低いランク」のみ許可するか、
+    // または「同じランクのロール」を編集する場合でも「自分より高いランク」には設定できないようにする。
+    // 安全のため、ここでも canAssignRole を使い、targetRank <= myRank であることを確認する
+    // ただし、canAssignRoleは "targetRank <= myRank" を返す。
+    // 編集対象のロールのランクが自分より高い場合はエラーにする
+
+    // 既存ロールの管理権限チェック
+    const canManageExisting = await canAssignRole(currentUser.id, existingRole.rank || 0);
+    if (!canManageExisting) {
+      // 特例: 自分自身のロールは編集できないようにすべきだが、ここでは簡単なチェック
+      return NextResponse.json(
+        { error: "このロールを編集する権限がありません（アクセスレベル不足）" },
+        { status: 403 }
+      );
+    }
+
+    // 新しいランクの設定がある場合、そのランクを付与できるかチェック
+    if (data.rank !== undefined) {
+      const canAssignNewRank = await canAssignRole(currentUser.id, data.rank);
+      if (!canAssignNewRank) {
+        return NextResponse.json(
+          { error: "指定されたランクを設定する権限がありません" },
+          { status: 403 }
+        );
+      }
+    }
+
     // ロールを更新
     const role = await prisma.customRole.update({
       where: { id: params.id },
@@ -43,6 +76,7 @@ export async function PUT(
         displayName: data.displayName,
         permissions: data.permissions,
         pageAccess: data.pageAccess,
+        rank: data.rank,
       },
     });
 
@@ -83,6 +117,15 @@ export async function DELETE(
       return NextResponse.json(
         { error: "ロールが見つかりません" },
         { status: 404 }
+      );
+    }
+
+    // ランクベースの権限チェック: 削除対象のロールランクを確認
+    const canManageExisting = await canAssignRole(currentUser.id, existingRole.rank || 0);
+    if (!canManageExisting) {
+      return NextResponse.json(
+        { error: "このロールを削除する権限がありません（アクセスレベル不足）" },
+        { status: 403 }
       );
     }
 

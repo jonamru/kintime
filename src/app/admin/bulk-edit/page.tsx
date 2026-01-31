@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useAuth } from "@/components/AuthProvider";
+import { canManageUser } from "@/lib/clientPermissions";
 import TimeBaseHeader from '@/components/TimeBaseHeader';
 import PageAccessGuard from "@/components/PageAccessGuard";
 import { showAlert, showNotification, showConfirm } from '@/lib/notification';
@@ -14,6 +15,10 @@ interface User {
   email: string;
   partner?: {
     name: string;
+  };
+  customRole?: {
+    rank?: number;
+    name?: string;
   };
 }
 
@@ -291,7 +296,7 @@ export default function BulkEditPage() {
 
   const fetchUsers = async () => {
     try {
-      const response = await fetch("/api/admin/users");
+      const response = await fetch("/api/admin/users?details=true");
       if (response.ok) {
         const result = await response.json();
         setUsers(result.users || []);
@@ -469,6 +474,25 @@ export default function BulkEditPage() {
   const saveEdit = async (recordId: string, field: string, newValue: string | number) => {
     console.log('保存開始:', { recordId, field, newValue, activeTab });
 
+    // 勤怠管理の場合、適切なレコードIDを決定する
+    let targetRecordId = recordId;
+    if (activeTab === 'attendance') {
+      const record = (data.attendance as AttendanceRecord[]).find(r => r.id === recordId);
+      if (record) {
+        // フィールドに対応する個別のIDがある場合はそれを使用（既存レコードの更新）
+        if (field === 'clockIn' && record.clockInId) targetRecordId = record.clockInId;
+        else if (field === 'clockOut' && record.clockOutId) targetRecordId = record.clockOutId;
+        else if (field === 'wakeUp' && record.wakeUpId) targetRecordId = record.wakeUpId;
+        else if (field === 'departure' && record.departureId) targetRecordId = record.departureId;
+        // 個別のIDがなく、かつメインIDが仮想ID（daily-）でない場合は、仮想IDを生成して使用（新規作成）
+        else if (!recordId.startsWith('daily-')) {
+          // record.user.id が必要（interface User に id はある）
+          // 日付とユーザーIDから仮想IDを再構築: daily-YYYY-MM-DD-userId
+          targetRecordId = `daily-${record.date}-${record.user.id}`;
+        }
+      }
+    }
+
     setLoading(true);
     try {
       const response = await fetch('/api/admin/inline-edit', {
@@ -476,7 +500,7 @@ export default function BulkEditPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type: activeTab,
-          recordId,
+          recordId: targetRecordId,
           field,
           value: newValue
         }),
@@ -485,13 +509,37 @@ export default function BulkEditPage() {
       const responseData = await response.json();
 
       if (response.ok) {
+        const updatedResult = responseData.result;
+
         setData(prev => ({
           ...prev,
           [activeTab]: prev[activeTab].map((record) => {
+            if (record.id !== recordId) return record;
+
+            // 勤怠管理の場合、APIレスポンスからIDなどを反映
+            if (activeTab === 'attendance') {
+              const newRecord = { ...record } as any;
+              newRecord[field] = newValue; // 表示用の値を更新
+
+              // APIレスポンスがある場合はIDを保存（新規作成時など）
+              if (updatedResult) {
+                if (field === 'clockIn') newRecord.clockInId = updatedResult.id;
+                if (field === 'clockOut') newRecord.clockOutId = updatedResult.id;
+                if (field === 'wakeUp') newRecord.wakeUpId = updatedResult.id;
+                if (field === 'departure') newRecord.departureId = updatedResult.id;
+              }
+
+              return newRecord;
+            }
+
+            // その他の場合
             const r = record as AttendanceRecord | ShiftRecord | ExpenseRecord;
-            return r.id === recordId ? { ...r, [field]: newValue } : r;
+            return { ...r, [field]: newValue };
           })
         }));
+
+        // 確実なデータ反映のために再取得を実行
+        fetchData();
 
         cancelEdit(recordId, field);
         showAlert("更新しました");
@@ -573,12 +621,12 @@ export default function BulkEditPage() {
                   className="rounded"
                 />
               </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">日付</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">起床時刻</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">出発時刻</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">出勤時刻</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">退勤時刻</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">操作</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-900 uppercase">日付</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-900 uppercase">起床時刻</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-900 uppercase">出発時刻</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-900 uppercase">出勤時刻</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-900 uppercase">退勤時刻</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-900 uppercase">操作</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
@@ -683,12 +731,12 @@ export default function BulkEditPage() {
                   className="rounded"
                 />
               </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">日付</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">時間</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">休憩(分)</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">勤務地</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">タイプ</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">操作</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-900 uppercase">日付</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-900 uppercase">時間</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-900 uppercase">休憩(分)</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-900 uppercase">勤務地</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-900 uppercase">タイプ</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-900 uppercase">操作</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
@@ -698,7 +746,7 @@ export default function BulkEditPage() {
 
               return (
                 <tr key={record.id} className={`${isAttended
-                  ? 'bg-gray-100 text-gray-500'
+                  ? 'bg-gray-100 text-gray-900'
                   : 'hover:bg-gray-50'
                   }`}>
                   <td className="px-4 py-4">
@@ -823,12 +871,12 @@ export default function BulkEditPage() {
                   className="rounded"
                 />
               </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">日付</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">カテゴリ</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">金額</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">内容</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">ステータス</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">操作</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-900 uppercase">日付</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-900 uppercase">カテゴリ</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-900 uppercase">金額</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-900 uppercase">内容</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-900 uppercase">ステータス</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-900 uppercase">操作</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
@@ -991,7 +1039,7 @@ export default function BulkEditPage() {
               <div className="bg-gray-50 p-4 rounded-lg mb-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-gray-900 mb-2">
                       対象ユーザー
                     </label>
                     <div className="space-y-2">
@@ -1016,7 +1064,7 @@ export default function BulkEditPage() {
                         ))}
                       </select>
                       {userSearchTerm && (
-                        <div className="text-sm text-gray-500">
+                        <div className="text-sm text-gray-900">
                           {filteredUsers.length}件のユーザーが見つかりました
                         </div>
                       )}
@@ -1024,7 +1072,7 @@ export default function BulkEditPage() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-gray-900 mb-2">
                       対象月
                     </label>
                     <input
@@ -1047,71 +1095,95 @@ export default function BulkEditPage() {
               </div>
 
               {selectedUser && selectedUserName && (
-                <div className="mb-6">
-                  <h2 className="text-lg font-medium text-gray-900 mb-4">
-                    {selectedUserName}さんの{selectedMonth}月データ
-                  </h2>
+                (() => {
+                  const targetUser = users.find(u => u.id === selectedUser);
+                  if (targetUser && currentUser && !canManageUser(currentUser, targetUser)) {
+                    return (
+                      <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-md">
+                        <div className="flex">
+                          <div className="flex-shrink-0">
+                            <svg className="h-5 w-5 text-red-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                            </svg>
+                          </div>
+                          <div className="ml-3">
+                            <h3 className="text-sm font-medium text-red-800">操作権限がありません</h3>
+                            <div className="mt-2 text-sm text-red-700">
+                              <p>選択されたユーザー ({targetUser.name}) は、あなたより上位の権限を持っているため操作できません。</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className="mb-6">
+                      <h2 className="text-lg font-medium text-gray-900 mb-4">
+                        {selectedUserName}さんの{selectedMonth}月データ
+                      </h2>
 
-                  <div className="border-b border-gray-200 mb-4">
-                    <nav className="-mb-px flex space-x-8">
-                      {[
-                        { id: 'attendance', name: '勤怠管理', icon: '🕐' },
-                        { id: 'shift', name: 'シフト管理', icon: '📅' },
-                        { id: 'expense', name: '経費管理', icon: '💰' }
-                      ].map((tab) => (
-                        <button
-                          key={tab.id}
-                          onClick={() => setActiveTab(tab.id as RecordType)}
-                          className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === tab.id
-                            ? 'border-indigo-500 text-indigo-600'
-                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                            }`}
-                        >
-                          <span className="mr-2">{tab.icon}</span>
-                          {tab.name}
-                        </button>
-                      ))}
-                    </nav>
-                  </div>
+                      <div className="border-b border-gray-200 mb-4">
+                        <nav className="-mb-px flex space-x-8">
+                          {[
+                            { id: 'attendance', name: '勤怠管理', icon: '🕐' },
+                            { id: 'shift', name: 'シフト管理', icon: '📅' },
+                            { id: 'expense', name: '経費管理', icon: '💰' }
+                          ].map((tab) => (
+                            <button
+                              key={tab.id}
+                              onClick={() => setActiveTab(tab.id as RecordType)}
+                              className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === tab.id
+                                ? 'border-indigo-500 text-indigo-600'
+                                : 'border-transparent text-gray-900 hover:text-gray-900 hover:border-gray-300'
+                                }`}
+                            >
+                              <span className="mr-2">{tab.icon}</span>
+                              {tab.name}
+                            </button>
+                          ))}
+                        </nav>
+                      </div>
 
-                  <div className="flex justify-between items-center mb-4">
-                    <div className="text-sm text-gray-600">
-                      {data[activeTab].length}件中 {selectedRecords.size}件選択
-                    </div>
-                    <div className="space-x-2">
-                      <button
-                        onClick={selectAllRecords}
-                        className="px-3 py-1 text-sm border border-gray-300 rounded-md hover:bg-gray-50"
-                      >
-                        {selectedRecords.size === data[activeTab].length ? '全選択解除' : '全選択'}
-                      </button>
-                      <button
-                        onClick={handleBulkDelete}
-                        disabled={selectedRecords.size === 0}
-                        className="px-3 py-1 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 disabled:bg-gray-400"
-                      >
-                        選択項目を削除
-                      </button>
+                      <div className="flex justify-between items-center mb-4">
+                        <div className="text-sm text-gray-900">
+                          {data[activeTab].length}件中 {selectedRecords.size}件選択
+                        </div>
+                        <div className="space-x-2">
+                          <button
+                            onClick={selectAllRecords}
+                            className="px-3 py-1 text-sm border border-gray-300 rounded-md hover:bg-gray-50 text-gray-900"
+                          >
+                            {selectedRecords.size === data[activeTab].length ? '全選択解除' : '全選択'}
+                          </button>
+                          <button
+                            onClick={handleBulkDelete}
+                            disabled={selectedRecords.size === 0}
+                            className="px-3 py-1 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 disabled:bg-gray-400"
+                          >
+                            選択項目を削除
+                          </button>
 
-                    </div>
-                  </div>
+                        </div>
+                      </div>
 
-                  {loading ? (
-                    <div className="text-center py-8">
-                      <div className="text-gray-500">読み込み中...</div>
+                      {loading ? (
+                        <div className="text-center py-8">
+                          <div className="text-gray-900">読み込み中...</div>
+                        </div>
+                      ) : data[activeTab].length === 0 ? (
+                        <div className="text-center py-8">
+                          <div className="text-gray-900">データがありません</div>
+                        </div>
+                      ) : (
+                        <>
+                          {activeTab === 'attendance' && renderAttendanceTable()}
+                          {activeTab === 'shift' && renderShiftTable()}
+                          {activeTab === 'expense' && renderExpenseTable()}
+                        </>
+                      )}
                     </div>
-                  ) : data[activeTab].length === 0 ? (
-                    <div className="text-center py-8">
-                      <div className="text-gray-500">データがありません</div>
-                    </div>
-                  ) : (
-                    <>
-                      {activeTab === 'attendance' && renderAttendanceTable()}
-                      {activeTab === 'shift' && renderShiftTable()}
-                      {activeTab === 'expense' && renderExpenseTable()}
-                    </>
-                  )}
-                </div>
+                  );
+                })()
               )}
             </div>
           </div>

@@ -243,6 +243,7 @@ export async function GET(request: Request) {
           displayName: true,
           permissions: true,
           pageAccess: true,
+          rank: true,
         }
       },
     } : {};
@@ -255,9 +256,10 @@ export async function GET(request: Request) {
         ...baseSelect,
         ...detailSelect,
       },
-      orderBy: {
-        name: "asc",
-      },
+      orderBy: [
+        { partner: { name: "asc" } },
+        { userId: "asc" },
+      ],
     });
 
     console.log(`取得したユーザー数: ${users.length} / 総件数: ${totalCount}`);

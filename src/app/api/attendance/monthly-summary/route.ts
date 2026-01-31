@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { getJapanTodayString, getJapanDayRange, getJapanMonthRange, getJapanNow, formatJapanDate } from "@/lib/dateUtils";
+import { hasPermissionForUser } from "@/lib/permissions";
 
 export async function GET(request: Request) {
   try {
@@ -47,6 +48,24 @@ export async function GET(request: Request) {
     // 対象ユーザーを決定（一括修正の場合は指定ユーザー、それ以外は現在ユーザー）
     const targetUserId = userId || currentUser.id;
 
+    // 他人のデータを取得する場合は権限チェック
+    if (targetUserId !== currentUser.id) {
+      // 閲覧権限があるかチェック ("viewAll" を要求すると、hasPermissionForUser内で scope も考慮される)
+      // 注意: permissions.ts の hasPermissionForUser は、要求されたpermissionが 'viewAll' の場合、
+      // ユーザーが持っている権限のscopeとtargetUserの関係をチェックしてくれる
+      const hasAccess = await hasPermissionForUser(
+        currentUser.id,
+        targetUserId,
+        "attendanceManagement",
+        "viewAll"
+      );
+
+      if (!hasAccess) {
+        console.log(`権限エラー: User ${currentUser.id} cannot view attendance of ${targetUserId}`);
+        return NextResponse.json({ error: "このユーザーの勤怠データを閲覧する権限がありません" }, { status: 403 });
+      }
+    }
+
     // 対象期間を決定
     let targetYear, targetMonth;
     if (year && month) {
@@ -83,6 +102,12 @@ export async function GET(request: Request) {
                 name: true,
                 userId: true,
                 email: true,
+                customRole: {
+                  select: {
+                    rank: true,
+                    name: true,
+                  }
+                },
               },
             },
           },
@@ -111,6 +136,12 @@ export async function GET(request: Request) {
                 name: true,
                 userId: true,
                 email: true,
+                customRole: {
+                  select: {
+                    rank: true,
+                    name: true,
+                  }
+                },
               },
             },
           },

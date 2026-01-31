@@ -79,6 +79,7 @@ export default function AdminShiftLockPage() {
   const navigateMonth = (direction: number) => {
     setCurrentMonth(prev => {
       const newMonth = new Date(prev);
+      newMonth.setDate(1);
       newMonth.setMonth(prev.getMonth() + direction);
       return newMonth;
     });
@@ -129,14 +130,14 @@ export default function AdminShiftLockPage() {
               <div className="flex justify-center items-center space-x-4 mb-6">
                 <button
                   onClick={() => navigateMonth(-1)}
-                  className="p-2 text-gray-400 hover:text-gray-600"
+                  className="p-2 text-gray-900 hover:text-gray-600"
                 >
                   ← 前月
                 </button>
-                <h2 className="text-lg font-medium">{formatMonth(currentMonth)}</h2>
+                <h2 className="text-lg font-medium text-gray-900">{formatMonth(currentMonth)}</h2>
                 <button
                   onClick={() => navigateMonth(1)}
-                  className="p-2 text-gray-400 hover:text-gray-600"
+                  className="p-2 text-gray-900 hover:text-gray-600"
                 >
                   次月 →
                 </button>
@@ -159,8 +160,8 @@ export default function AdminShiftLockPage() {
                     </p>
                   </div>
                   <div className={`px-3 py-1 rounded-full text-sm font-medium ${lockData.isAfterDeadline
-                      ? 'bg-red-100 text-red-800'
-                      : 'bg-green-100 text-green-800'
+                    ? 'bg-red-100 text-red-800'
+                    : 'bg-green-100 text-green-800'
                     }`}>
                     {lockData.isAfterDeadline ? '期限終了' : '登録期間中'}
                   </div>
@@ -172,16 +173,16 @@ export default function AdminShiftLockPage() {
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
                         ユーザー
                       </th>
-                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-700 uppercase tracking-wider">
                         登録状態
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
                         ロック解除情報
                       </th>
-                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-700 uppercase tracking-wider">
                         操作
                       </th>
                     </tr>
@@ -201,8 +202,8 @@ export default function AdminShiftLockPage() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-center">
                           <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${user.isLocked
-                              ? 'bg-red-100 text-red-800'
-                              : 'bg-green-100 text-green-800'
+                            ? 'bg-red-100 text-red-800'
+                            : 'bg-green-100 text-green-800'
                             }`}>
                             {user.isLocked ? 'ロック中' : '登録可能'}
                           </span>

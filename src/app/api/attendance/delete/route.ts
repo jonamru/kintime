@@ -7,9 +7,9 @@ import { hasPermission } from "@/lib/permissions";
 export async function POST(request: Request) {
   try {
     const { attendanceId, isUndo } = await request.json();
-    
+
     const currentUser = await getCurrentUser(request);
-    
+
     if (!currentUser) {
       return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
     }
@@ -67,8 +67,8 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json({
-      message: isUndo 
-        ? "打刻を取り消しました" 
+      message: isUndo
+        ? "打刻を取り消しました"
         : `${attendance.user.name}さんの打刻記録を削除しました`,
     });
   } catch (error: unknown) {
@@ -94,7 +94,7 @@ export async function DELETE(request: Request) {
     }
 
     const currentUser = await getCurrentUser(request);
-    
+
     if (!currentUser) {
       return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
     }
@@ -114,13 +114,14 @@ export async function DELETE(request: Request) {
       const parts = attendanceId.split('-');
       if (parts.length >= 5) {
         const dateStr = `${parts[1]}-${parts[2]}-${parts[3]}`;
-        const userId = parts[4];
-        
+        // UUIDにはハイフンが含まれるため、parts[4]以降を結合する
+        const userId = parts.slice(4).join('-');
+
         const targetDate = new Date(dateStr);
         const startOfDay = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate());
         const endOfDay = new Date(startOfDay);
         endOfDay.setDate(endOfDay.getDate() + 1);
-        
+
         // その日の全ての打刻記録を削除
         const attendanceRecords = await prisma.attendance.findMany({
           where: {
@@ -138,7 +139,11 @@ export async function DELETE(request: Request) {
         });
 
         if (attendanceRecords.length === 0) {
-          return NextResponse.json({ error: "削除対象の打刻記録が見つかりません" }, { status: 404 });
+          // レコードがない場合は既に削除されているか存在しないため、成功として扱う
+          return NextResponse.json({
+            message: "削除対象の打刻記録はありませんでした",
+            count: 0
+          });
         }
 
         // 関連する修正記録を削除

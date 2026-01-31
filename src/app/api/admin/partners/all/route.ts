@@ -13,8 +13,14 @@ export async function GET(request: Request) {
 
     // パートナー管理権限をチェック
     const hasPartnerPermission = await hasPermission(currentUser.id, "systemSettings", "managePartners");
-    if (!hasPartnerPermission) {
-      return NextResponse.json({ error: "パートナー管理権限がありません" }, { status: 403 });
+
+    // レポート閲覧等のために、各管理機能の閲覧権限（全体）がある場合も許可
+    const canViewAllAttendance = await hasPermission(currentUser.id, "attendanceManagement", "viewAll");
+    const canViewAllExpense = await hasPermission(currentUser.id, "expenseManagement", "viewAll");
+    const canViewAllShift = await hasPermission(currentUser.id, "shiftManagement", "viewAll");
+
+    if (!hasPartnerPermission && !canViewAllAttendance && !canViewAllExpense && !canViewAllShift) {
+      return NextResponse.json({ error: "パートナー情報を閲覧する権限がありません" }, { status: 403 });
     }
 
     // すべてのパートナー企業を取得（アクティブ・非アクティブ両方）

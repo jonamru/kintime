@@ -138,6 +138,7 @@ export interface CustomRole {
   name: string;
   displayName: string;
   isSystem: boolean;
+  rank: number;
   permissions: {
     userManagement?: {
       create?: boolean;

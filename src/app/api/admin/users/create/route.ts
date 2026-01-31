@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { getCurrentUser } from "@/lib/auth";
-import { hasPermission } from "@/lib/permissions";
+import { hasPermission, canAssignRole } from "@/lib/permissions";
 
 export async function POST(request: Request) {
   try {
@@ -39,6 +39,23 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: "名前、メールアドレス、パスワード、権限は必須です" },
         { status: 400 }
+      );
+    }
+
+    // ★ランクベースの権限チェック: 付与するロールのランク制限を確認
+    const targetRole = await prisma.customRole.findUnique({
+      where: { id: customRoleId },
+    });
+
+    if (!targetRole) {
+      return NextResponse.json({ error: "指定されたロールが見つかりません" }, { status: 400 });
+    }
+
+    const canAssign = await canAssignRole(currentUser.id, targetRole.rank);
+    if (!canAssign) {
+      return NextResponse.json(
+        { error: "このロールを割り当てる権限がありません（アクセスレベル不足）" },
+        { status: 403 }
       );
     }
 

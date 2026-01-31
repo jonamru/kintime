@@ -1,38 +1,49 @@
-const { PrismaClient } = require('@prisma/client');
-const bcrypt = require('bcryptjs');
 
-const prisma = new PrismaClient();
+import { PrismaClient } from '@prisma/client'
+import bcrypt from 'bcryptjs'
 
-async function main() {
-    const email = process.argv[2] || 'admin@example.com';
-    const newPassword = process.argv[3] || 'admin123';
+const prisma = new PrismaClient()
 
-    console.log(`パスワードをリセットします...`);
-    console.log(`対象ユーザー: ${email}`);
-    console.log(`新しいパスワード: ${newPassword}`);
+async function resetAdminPassword() {
+    const email = 'admin@alphadoor.jp' // メールアドレスを指定
+    const newPassword = 'password123' // 単純な一時パスワード
 
-    // bcryptで新しいハッシュを生成
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    try {
+        const hashedPassword = await bcrypt.hash(newPassword, 10)
 
-    // ユーザーを更新
-    const updated = await prisma.user.update({
-        where: { email: email },
-        data: { password: hashedPassword }
-    });
+        // メールアドレスとユーザIDの両方で検索
+        const user = await prisma.user.findFirst({
+            where: {
+                OR: [
+                    { email: email },
+                    { userId: 'admin' } // システム管理者のユーザーID
+                ]
+            }
+        })
 
-    console.log('\n✅ パスワードのリセットが完了しました！');
-    console.log(`ユーザー: ${updated.email}`);
-    console.log(`名前: ${updated.name}`);
-    console.log(`\n以下の情報でログインできます:`);
-    console.log(`Email: ${email}`);
-    console.log(`Password: ${newPassword}`);
+        if (!user) {
+            console.log('User not found.')
+            return
+        }
+
+        const updatedUser = await prisma.user.update({
+            where: { id: user.id },
+            data: { password: hashedPassword },
+        })
+
+        console.log(`Password reset for user: ${updatedUser.email} / ${updatedUser.userId}`)
+        console.log(`New password: ${newPassword}`)
+
+        // Verify login logic details
+        console.log('User ID:', updatedUser.userId)
+        console.log('Email:', updatedUser.email)
+        console.log('Is Active:', updatedUser.isActive)
+
+    } catch (error) {
+        console.error('Error resetting password:', error)
+    } finally {
+        await prisma.$disconnect()
+    }
 }
 
-main()
-    .catch((error) => {
-        console.error('❌ エラーが発生しました:', error.message);
-        process.exit(1);
-    })
-    .finally(async () => {
-        await prisma.$disconnect();
-    });
+resetAdminPassword()

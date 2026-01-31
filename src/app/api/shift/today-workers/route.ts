@@ -8,25 +8,31 @@ import { Prisma } from "@prisma/client";
 export async function GET(request: Request) {
   try {
     const currentUser = await getCurrentUser(request);
-    
+
     if (!currentUser) {
       return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
     }
 
     // シフト閲覧権限をチェック
-    const canViewAll = await hasPermission(currentUser.id, "shiftManagement", "viewAll");
+    // シフト閲覧権限または勤怠閲覧権限をチェック
+    const canViewAllShifts = await hasPermission(currentUser.id, "shiftManagement", "viewAll");
+    const canViewAllAttendance = await hasPermission(currentUser.id, "attendanceManagement", "viewAll");
+
+    // どちらかの権限で全閲覧可能ならOK
+    const canViewAll = canViewAllShifts || canViewAllAttendance;
+
     const canViewCompany = await hasPermission(currentUser.id, "shiftManagement", "viewCompany");
     const canViewAssigned = await hasPermission(currentUser.id, "shiftManagement", "viewAssigned");
-    
+
     const accessibleUserIds = await getAccessibleUserIds(currentUser.id, "shiftManagement", "viewAll");
-    
+
     if (!canViewAll && !canViewCompany && !canViewAssigned && accessibleUserIds.length === 0) {
       return NextResponse.json({ error: "権限がありません" }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);
     const dateParam = searchParams.get('date');
-    
+
     // 日付パラメータの処理（YYYY-MM-DD形式）
     let startOfDay, endOfDay;
     if (dateParam) {
@@ -73,12 +79,18 @@ export async function GET(request: Request) {
                 name: true,
               },
             },
+            customRole: {
+              select: {
+                rank: true,
+                name: true,
+              },
+            },
           },
         },
       },
       orderBy: [
-        { startTime: "asc" },
-        { user: { name: "asc" } },
+        { user: { partner: { name: "asc" } } },
+        { user: { userId: "asc" } },
       ],
     });
 
@@ -109,7 +121,7 @@ export async function GET(request: Request) {
     // シフトと打刻情報を結合
     const workersWithAttendance = shifts.map(shift => {
       const userAttendances = attendanceMap[shift.userId] || [];
-      
+
       // 打刻状況を判定
       const clockIn = userAttendances.find((a: { type: string }) => a.type === "CLOCK_IN");
       const clockOut = userAttendances.find((a: { type: string }) => a.type === "CLOCK_OUT");

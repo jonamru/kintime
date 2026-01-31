@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { getCurrentUser } from "@/lib/auth";
-import { hasPermission } from "@/lib/permissions";
+import { hasPermission, canManageUser, canAssignRole } from "@/lib/permissions";
 import type { User, Attendance, Shift, Expense, CustomRole, Partner, ApiResponse, BulkEditPermissions } from "@/types/common";
 import { Prisma } from "@prisma/client";
 
@@ -62,6 +62,34 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
         { error: `所属企業「${existingUser.partner.name}」が非アクティブのため、このユーザーは編集できません` },
         { status: 403 }
       );
+    }
+
+    // ★ランクベースの権限チェック: 編集対象のユーザーより高いランクが必要
+    const canManage = await canManageUser(currentUser.id, id);
+    if (!canManage) {
+      return NextResponse.json(
+        { error: "このユーザーを編集する権限がありません（アクセスレベル不足）" },
+        { status: 403 }
+      );
+    }
+
+    // ★ランクベースの権限チェック: ロール変更がある場合、付与するロールのランク制限を確認
+    if (customRoleId && customRoleId !== existingUser.customRoleId) {
+      const targetRole = await prisma.customRole.findUnique({
+        where: { id: customRoleId },
+      });
+
+      if (!targetRole) {
+        return NextResponse.json({ error: "指定されたロールが見つかりません" }, { status: 400 });
+      }
+
+      const canAssign = await canAssignRole(currentUser.id, targetRole.rank);
+      if (!canAssign) {
+        return NextResponse.json(
+          { error: "このロールを割り当てる権限がありません（アクセスレベル不足）" },
+          { status: 403 }
+        );
+      }
     }
 
     // 必須フィールドの検証
@@ -186,6 +214,15 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     // 自分自身は削除できない
     if (userToDelete.id === currentUser.id) {
       return NextResponse.json({ error: "自分自身は削除できません" }, { status: 400 });
+    }
+
+    // ★ランクベースの権限チェック: 削除対象のユーザーより高いランクが必要
+    const canManage = await canManageUser(currentUser.id, id);
+    if (!canManage) {
+      return NextResponse.json(
+        { error: "このユーザーを削除する権限がありません（アクセスレベル不足）" },
+        { status: 403 }
+      );
     }
 
     // 関連データを先に削除

@@ -24,7 +24,7 @@ export default function AttendancePage() {
 
   useEffect(() => {
     // ページタイトルを設定
-    document.title = "TimeBase - 勤怠打刻";
+    document.title = "TimeBase - 打刻";
 
     fetchTodayAttendance();
     fetchUserSettings();

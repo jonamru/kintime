@@ -29,7 +29,7 @@ export function hasUserPermission(
             permission === 'edit' || permission === 'editOthers' || permission === 'editAssigned' || permission === 'create' ? 'edit' :
               (permission === 'lock' && category === 'expenseManagement') ? 'edit' :
                 (permission === 'lockUnlock' && category === 'shiftManagement') ? 'edit' :
-                  permission === 'approve' || permission === 'delete' || permission === 'lock' || permission === 'lockUnlock' || permission === 'ignoreDeadline' ? 'admin' : 'view';
+                  permission === 'approve' || permission === 'delete' || permission === 'lock' || permission === 'lockUnlock' || permission === 'ignoreDeadline' || permission === 'forcedRegister' ? 'admin' : 'view';
 
         // Check if level is sufficient
         if (levelHierarchy.indexOf(cp.level) < levelHierarchy.indexOf(requiredLevel)) {
@@ -118,8 +118,14 @@ export function isUserAdmin(user: AuthUser): boolean {
     // ユーザーが存在しない場合はfalse
     if (!user) return false;
 
-    // カスタムロールがある場合は、カスタムロールの権限のみを使用
+    // カスタムロールがある場合は、ランクを確認
     if (user.customRole) {
+      // ランクが存在する場合はランクで判定 (3=Admin, 4=System Admin)
+      if (typeof user.customRole.rank === 'number') {
+        return user.customRole.rank >= 3;
+      }
+
+      // ランクがない場合（旧仕様など）は権限で判定
       return hasUserPermission(user, 'userManagement', 'viewAll') ||
         hasUserPermission(user, 'systemSettings', 'manageCompany');
     }
@@ -164,6 +170,33 @@ export function canBeManager(user: AuthUser): boolean {
     return false;
   } catch (error: unknown) {
     console.error('canBeManager error:', error);
+    return false;
+  }
+}
+
+// ユーザー操作のランクチェック
+// 操作実行者(actor)のランクが、対象者(target)のランク以上でなければ操作不可
+export function canManageUser(actor: AuthUser, target: { customRole?: { rank?: number } }): boolean {
+  try {
+    if (!actor || !target) return false;
+
+    // 自分のデータは常に操作可能（別途権限チェックは必要）
+    // if (actor.id === target.id) return true; // targetにidが含まれているとは限らない型定義のため一旦コメントアウト
+
+    // システム管理者は最強
+    if (actor.customRole?.name === 'SUPER_ADMIN') return true;
+
+    const actorRank = actor.customRole?.rank || 0;
+    const targetRank = target.customRole?.rank || 0;
+
+    // 自分よりランクが高いユーザーは操作不可
+    if (targetRank > actorRank) {
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error('canManageUser error:', error);
     return false;
   }
 }

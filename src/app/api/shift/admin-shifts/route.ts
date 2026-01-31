@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
-import { getUserPermissions, getAccessibleUserIds } from "@/lib/permissions";
+import { getUserPermissions, getAccessibleUserIds, hasPermissionForUser } from "@/lib/permissions";
 import { formatJapanDate, formatJapanDateTime } from "@/lib/dateUtils";
 import { Prisma } from "@prisma/client";
 
@@ -17,7 +17,7 @@ export async function GET(request: Request) {
     const permissions = await getUserPermissions(currentUser.id);
     const canViewAll = permissions?.shiftManagement?.viewAll;
 
-    const { searchParams } = new URL(request.url);  
+    const { searchParams } = new URL(request.url);
     const year = parseInt(searchParams.get('year') || '');
     const month = parseInt(searchParams.get('month') || '');
     const userId = searchParams.get('userId');
@@ -33,7 +33,7 @@ export async function GET(request: Request) {
     // 一括修正データが要求された場合は1ヶ月分のデータを生成
     if (getBulkData && userId) {
       console.log(`一括修正用シフトデータ生成: ${year}年${month}月, ユーザー: ${userId}`);
-      
+
       try {
         // 指定されたユーザーの既存シフトを取得
         const existingShifts = await prisma.shift.findMany({
@@ -110,11 +110,23 @@ export async function GET(request: Request) {
 
     // ユーザー指定がある場合
     if (userId) {
+      // 他人のシフトを見る場合は権限チェック
+      if (userId !== currentUser.id) {
+        const hasAccess = await hasPermissionForUser(
+          currentUser.id,
+          userId,
+          "shiftManagement",
+          "viewAll"
+        );
+        if (!hasAccess) {
+          return NextResponse.json({ error: "このユーザーのシフト閲覧権限がありません" }, { status: 403 });
+        }
+      }
       whereCondition.userId = userId;
     } else {
       // アクセス可能なユーザーIDを取得
       const accessibleUserIds = await getAccessibleUserIds(currentUser.id, "shiftManagement", "viewAll");
-      
+
       // 全シフト閲覧権限がない場合はアクセス可能なユーザーのシフトのみ取得
       if (!canViewAll) {
         if (accessibleUserIds.length === 0) {

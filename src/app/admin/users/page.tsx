@@ -9,6 +9,8 @@ import { showAlert, showConfirm } from '@/lib/notification';
 import { isUserAdmin, canBeManager } from "@/lib/clientPermissions";
 export default function AdminUsersPage() {
   const { user: currentUser } = useAuth();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const myRank = (currentUser?.customRole as any)?.rank || 0;
   interface User {
     id: string;
     name: string;
@@ -17,7 +19,7 @@ export default function AdminUsersPage() {
     companyId?: string;
     company?: { name: string };
     partner?: { id: string; name: string; isActive?: boolean };
-    customRole?: { name: string; displayName?: string; permissions?: Record<string, unknown>; pageAccess?: Record<string, unknown> };
+    customRole?: { name: string; displayName?: string; permissions?: Record<string, unknown>; pageAccess?: Record<string, unknown>; rank?: number };
     customRoleId?: string;
     partnerId?: string;
     assignedUsers?: User[];
@@ -34,7 +36,7 @@ export default function AdminUsersPage() {
   interface Partner { id: string; name: string; }
   const [partners, setPartners] = useState<Partner[]>([]);
   const [managers, setManagers] = useState<User[]>([]);
-  interface CustomRole { id: string; name: string; displayName?: string; description?: string; }
+  interface CustomRole { id: string; name: string; displayName?: string; description?: string; rank?: number; }
   const [customRoles, setCustomRoles] = useState<CustomRole[]>([]);
   const [loading, setLoading] = useState(false);
   // 検索・フィルタ用のstate
@@ -125,8 +127,20 @@ export default function AdminUsersPage() {
     }
 
     setFilteredUsers(filtered);
-    setCurrentPage(1); // フィルタ変更時は1ページ目に戻る
   }, [users, searchTerm, roleFilter, partnerFilter, statusFilter]);
+
+  // フィルタ変更時のみページをリセット
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, roleFilter, partnerFilter, statusFilter]);
+
+  // ページ範囲の自動修正（データ削除などでページ数が減った場合）
+  useEffect(() => {
+    const totalPages = Math.ceil(filteredUsers.length / usersPerPage) || 1;
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [filteredUsers.length, usersPerPage]);
 
   // ページネーション計算
   const totalPages = Math.ceil(filteredUsers.length / usersPerPage);
@@ -194,7 +208,8 @@ export default function AdminUsersPage() {
               name: user.customRole.name,
               displayName: user.customRole.name,
               permissions: user.customRole.permissions || {},
-              pageAccess: user.customRole.pageAccess || {}
+              pageAccess: user.customRole.pageAccess || {},
+              rank: user.customRole.rank
             },
             assignedUsers: user.assignedUsers || [],
             defaultLocation: user.defaultLocation || '',
@@ -645,157 +660,174 @@ export default function AdminUsersPage() {
                         </td>
                       </tr>
                     ) : (
-                      currentUsers.map((user) => (
-                        <tr key={user.id} className={user.isActive === false ? "bg-gray-50" : ""}>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm font-medium text-gray-900">
-                              {user.userId || "未設定"}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="flex items-center">
-                              <div>
-                                <div className="text-sm font-medium text-gray-900">
-                                  {user.name}
-                                </div>
-                                <div className="text-xs text-gray-500">
-                                  {user.email}
+                      currentUsers.map((user) => {
+                        // ランクベースの操作権限チェック
+                        // 自分よりランクが低いユーザーのみ操作可能（同格も不可）
+                        // ただし自分自身は常に編集可能（API側も同様）
+                        const targetRank = user.customRole?.rank || 0;
+                        const canManage = currentUser?.id === user.id || myRank > targetRank;
+
+                        return (
+                          <tr key={user.id} className={user.isActive === false ? "bg-gray-50" : ""}>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="text-sm font-medium text-gray-900">
+                                {user.userId || "未設定"}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="flex items-center">
+                                <div>
+                                  <div className="text-sm font-medium text-gray-900">
+                                    {user.name}
+                                  </div>
+                                  <div className="text-xs text-gray-500">
+                                    {user.email}
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
-                              {user.customRole?.displayName || '未設定'}
-                            </span>
-                            {user.isActive === false && (
-                              <span className="ml-2 px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">
-                                無効
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
+                                {user.customRole?.displayName || '未設定'}
                               </span>
-                            )}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {user.partner ? user.partner.name : '自社'}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {user.managers && user.managers.length > 0
-                              ? user.managers.map(manager => manager.name || '').join(', ')
-                              : '未設定'
-                            }
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {user.birthDate ? new Date(user.birthDate).toLocaleDateString('ja-JP') : '未設定'}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-center">
-                            <button
-                              onClick={() => handleToggle(user.id, 'gpsEnabled', user.gpsEnabled ?? true)}
-                              disabled={loading}
-                              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${(user.gpsEnabled ?? true) ? 'bg-indigo-600' : 'bg-gray-200'
-                                }`}
-                            >
-                              <span
-                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${(user.gpsEnabled ?? true) ? 'translate-x-6' : 'translate-x-1'
-                                  }`}
-                              />
-                            </button>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-center">
-                            <button
-                              onClick={() => handleToggle(user.id, 'wakeUpEnabled', user.wakeUpEnabled ?? false)}
-                              disabled={loading}
-                              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${(user.wakeUpEnabled ?? false) ? 'bg-indigo-600' : 'bg-gray-200'
-                                }`}
-                            >
-                              <span
-                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${(user.wakeUpEnabled ?? false) ? 'translate-x-6' : 'translate-x-1'
-                                  }`}
-                              />
-                            </button>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-center">
-                            <button
-                              onClick={() => handleToggle(user.id, 'departureEnabled', user.departureEnabled ?? false)}
-                              disabled={loading}
-                              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${(user.departureEnabled ?? false) ? 'bg-indigo-600' : 'bg-gray-200'
-                                }`}
-                            >
-                              <span
-                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${(user.departureEnabled ?? false) ? 'translate-x-6' : 'translate-x-1'
-                                  }`}
-                              />
-                            </button>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {editingUserId === user.id ? (
-                              <div className="flex items-center space-x-2">
-                                <input
-                                  type="text"
-                                  value={editingLocation}
-                                  onChange={(e) => setEditingLocation(e.target.value)}
-                                  className="flex-1 border border-gray-300 rounded px-2 py-1 text-sm"
-                                  placeholder="例: 大阪オフィス"
+                              {user.isActive === false && (
+                                <span className="ml-2 px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">
+                                  無効
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              {user.partner ? user.partner.name : '自社'}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              {user.managers && user.managers.length > 0
+                                ? user.managers.map(manager => manager.name || '').join(', ')
+                                : '未設定'
+                              }
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              {user.birthDate ? new Date(user.birthDate).toLocaleDateString('ja-JP') : '未設定'}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-center">
+                              <button
+                                onClick={() => handleToggle(user.id, 'gpsEnabled', user.gpsEnabled ?? true)}
+                                disabled={loading || !canManage}
+                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${(user.gpsEnabled ?? true) ? 'bg-indigo-600' : 'bg-gray-200'} ${!canManage ? 'opacity-50 cursor-not-allowed' : ''}
+                                `}
+                              >
+                                <span
+                                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${(user.gpsEnabled ?? true) ? 'translate-x-6' : 'translate-x-1'
+                                    }`}
                                 />
+                              </button>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-center">
+                              <button
+                                onClick={() => handleToggle(user.id, 'wakeUpEnabled', user.wakeUpEnabled ?? false)}
+                                disabled={loading || !canManage}
+                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${(user.wakeUpEnabled ?? false) ? 'bg-indigo-600' : 'bg-gray-200'} ${!canManage ? 'opacity-50 cursor-not-allowed' : ''}
+                                `}
+                              >
+                                <span
+                                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${(user.wakeUpEnabled ?? false) ? 'translate-x-6' : 'translate-x-1'
+                                    }`}
+                                />
+                              </button>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-center">
+                              <button
+                                onClick={() => handleToggle(user.id, 'departureEnabled', user.departureEnabled ?? false)}
+                                disabled={loading || !canManage}
+                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${(user.departureEnabled ?? false) ? 'bg-indigo-600' : 'bg-gray-200'} ${!canManage ? 'opacity-50 cursor-not-allowed' : ''}
+                                `}
+                              >
+                                <span
+                                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${(user.departureEnabled ?? false) ? 'translate-x-6' : 'translate-x-1'
+                                    }`}
+                                />
+                              </button>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              {editingUserId === user.id ? (
+                                <div className="flex items-center space-x-2">
+                                  <input
+                                    type="text"
+                                    value={editingLocation}
+                                    onChange={(e) => setEditingLocation(e.target.value)}
+                                    className="flex-1 border border-gray-300 rounded px-2 py-1 text-sm"
+                                    placeholder="例: 大阪オフィス"
+                                  />
+                                  <button
+                                    onClick={() => {
+                                      updateUserSettings(user.id, { defaultLocation: editingLocation });
+                                      setEditingUserId(null);
+                                    }}
+                                    className="text-green-600 hover:text-green-900 text-sm"
+                                  >
+                                    保存
+                                  </button>
+                                  <button
+                                    onClick={() => setEditingUserId(null)}
+                                    className="text-gray-600 hover:text-gray-900 text-sm"
+                                  >
+                                    取消
+                                  </button>
+                                </div>
+                              ) : (
+
+                                <div className="flex items-center justify-between">
+                                  <span>{user.defaultLocation || "未設定"}</span>
+                                  {canManage && (
+                                    <button
+                                      onClick={() => {
+                                        setEditingUserId(user.id);
+                                        setEditingLocation(user.defaultLocation || "");
+                                      }}
+                                      className="ml-2 text-indigo-600 hover:text-indigo-900 text-sm"
+                                    >
+                                      編集
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
+                              <div className="flex space-x-2">
                                 <button
                                   onClick={() => {
-                                    updateUserSettings(user.id, { defaultLocation: editingLocation });
-                                    setEditingUserId(null);
+                                    if (user.partner?.isActive === false) {
+                                      showAlert(`所属企業「${user.partner.name}」が非アクティブのため、このユーザーは編集できません`);
+                                      return;
+                                    }
+                                    handleEditUser(user);
                                   }}
-                                  className="text-green-600 hover:text-green-900 text-sm"
-                                >
-                                  保存
-                                </button>
-                                <button
-                                  onClick={() => setEditingUserId(null)}
-                                  className="text-gray-600 hover:text-gray-900 text-sm"
-                                >
-                                  取消
-                                </button>
-                              </div>
-                            ) : (
-                              <div className="flex items-center justify-between">
-                                <span>{user.defaultLocation || "未設定"}</span>
-                                <button
-                                  onClick={() => {
-                                    setEditingUserId(user.id);
-                                    setEditingLocation(user.defaultLocation || "");
-                                  }}
-                                  className="ml-2 text-indigo-600 hover:text-indigo-900 text-sm"
+                                  disabled={user.partner?.isActive === false || !canManage}
+                                  className={`${user.partner?.isActive === false || !canManage
+                                    ? 'text-gray-400 cursor-not-allowed'
+                                    : 'text-indigo-600 hover:text-indigo-900'}`}
+                                  title={
+                                    user.partner?.isActive === false
+                                      ? '所属企業が非アクティブです'
+                                      : !canManage
+                                        ? '編集権限がありません（アクセスレベル不足）'
+                                        : undefined
+                                  }
                                 >
                                   編集
                                 </button>
+                                {currentUser && currentUser.customRole?.name === 'SUPER_ADMIN' && canManage && (
+                                  <button
+                                    onClick={() => handleDeleteUser(user)}
+                                    className="text-red-600 hover:text-red-900"
+                                  >
+                                    削除
+                                  </button>
+                                )}
                               </div>
-                            )}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
-                            <div className="flex space-x-2">
-                              <button
-                                onClick={() => {
-                                  if (user.partner?.isActive === false) {
-                                    showAlert(`所属企業「${user.partner.name}」が非アクティブのため、このユーザーは編集できません`);
-                                    return;
-                                  }
-                                  handleEditUser(user);
-                                }}
-                                disabled={user.partner?.isActive === false}
-                                className={`${user.partner?.isActive === false
-                                  ? 'text-gray-400 cursor-not-allowed'
-                                  : 'text-indigo-600 hover:text-indigo-900'}`}
-                                title={user.partner?.isActive === false ? '所属企業が非アクティブです' : undefined}
-                              >
-                                編集
-                              </button>
-                              {currentUser && currentUser.customRole?.name === 'SUPER_ADMIN' && (
-                                <button
-                                  onClick={() => handleDeleteUser(user)}
-                                  className="text-red-600 hover:text-red-900"
-                                >
-                                  削除
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      ))
+                            </td>
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
                 </table>
@@ -915,540 +947,246 @@ export default function AdminUsersPage() {
         </div>
 
         {/* 新規ユーザー作成モーダル */}
-        {showCreateModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
-              {/* ヘッダー */}
-              <div className="bg-gradient-to-r from-emerald-500 to-emerald-600 px-8 py-6">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-10 h-10 bg-white bg-opacity-20 rounded-xl flex items-center justify-center">
-                      <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-                      </svg>
-                    </div>
-                    <div>
-                      <h3 className="text-2xl font-bold text-white">新規ユーザー登録</h3>
-                      <p className="text-emerald-100 text-sm">新しいメンバーをシステムに追加</p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => {
-                      setShowCreateModal(false);
-                      resetForm();
-                    }}
-                    className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-2 transition-all duration-200"
-                  >
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-
-              {/* コンテンツ */}
-              <div className="overflow-y-auto max-h-[calc(90vh-140px)]">
-                <form onSubmit={handleCreateUser} className="p-8">
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    {/* 左カラム - 基本情報 */}
-                    <div className="space-y-6">
-                      <div className="bg-blue-50 rounded-xl p-6 border border-blue-100">
-                        <div className="flex items-center mb-4">
-                          <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center mr-3">
-                            <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                            </svg>
-                          </div>
-                          <h4 className="text-lg font-semibold text-blue-900">基本情報</h4>
-                        </div>
-
-                        <div className="space-y-4">
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                              ユーザーID
-                            </label>
-                            <input
-                              type="text"
-                              value={`${systemSettings?.companyUserIdPrefix || 'STFF'}XXXX`}
-                              readOnly={true}
-                              className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-sm focus:border-blue-500 focus:ring-0 transition-all duration-200 bg-gray-50 cursor-not-allowed"
-                              placeholder="自動生成されます"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                              名前 <span className="text-red-500">*</span>
-                            </label>
-                            <input
-                              type="text"
-                              value={formData.name}
-                              onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                              className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-sm focus:border-blue-500 focus:ring-0 transition-all duration-200"
-                              placeholder="フルネームを入力"
-                              required
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                              メールアドレス <span className="text-red-500">*</span>
-                            </label>
-                            <input
-                              type="email"
-                              value={formData.email}
-                              onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
-                              className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-sm focus:border-blue-500 focus:ring-0 transition-all duration-200"
-                              placeholder="example@company.com"
-                              required
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                              初期パスワード <span className="text-red-500">*</span>
-                            </label>
-                            <input
-                              type="password"
-                              value={formData.password}
-                              onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
-                              className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-sm focus:border-blue-500 focus:ring-0 transition-all duration-200"
-                              placeholder="8文字以上の安全なパスワード"
-                              required
-                            />
-                            <p className="text-xs text-gray-500 mt-1">ユーザーは初回ログイン後にパスワード変更を推奨</p>
-                          </div>
-
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                              生年月日
-                            </label>
-                            <input
-                              type="date"
-                              value={formData.birthDate}
-                              onChange={(e) => setFormData(prev => ({ ...prev, birthDate: e.target.value }))}
-                              className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-sm focus:border-blue-500 focus:ring-0 transition-all duration-200"
-                            />
-                          </div>
-                        </div>
+        {
+          showCreateModal && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
+                {/* ヘッダー */}
+                <div className="bg-gradient-to-r from-emerald-500 to-emerald-600 px-8 py-6">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 bg-white bg-opacity-20 rounded-xl flex items-center justify-center">
+                        <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                        </svg>
                       </div>
-                    </div>
-
-                    {/* 右カラム - 権限・所属情報 */}
-                    <div className="space-y-6">
-                      <div className="bg-purple-50 rounded-xl p-6 border border-purple-100">
-                        <div className="flex items-center mb-4">
-                          <div className="w-8 h-8 bg-purple-500 rounded-lg flex items-center justify-center mr-3">
-                            <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.031 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                            </svg>
-                          </div>
-                          <h4 className="text-lg font-semibold text-purple-900">権限・所属情報</h4>
-                        </div>
-
-                        <div className="space-y-4">
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                              権限ロール <span className="text-red-500">*</span>
-                            </label>
-                            <select
-                              value={formData.customRoleId}
-                              onChange={(e) => {
-                                setFormData(prev => ({ ...prev, customRoleId: e.target.value }));
-                              }}
-                              className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-sm focus:border-purple-500 focus:ring-0 transition-all duration-200"
-                              required
-                            >
-                              <option value="">ロールを選択してください</option>
-                              {customRoles.map(role => (
-                                <option key={role.id} value={role.id}>
-                                  {role.displayName || role.name}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                              所属会社
-                            </label>
-                            <select
-                              value={formData.partnerId}
-                              onChange={(e) => setFormData(prev => ({ ...prev, partnerId: e.target.value }))}
-                              className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-sm focus:border-purple-500 focus:ring-0 transition-all duration-200"
-                            >
-                              <option value="">自社</option>
-                              {partners.map(partner => (
-                                <option key={partner.id} value={partner.id}>{partner.name}</option>
-                              ))}
-                            </select>
-                          </div>
-
-                          {/* 担当管理者選択 - プルダウン形式 */}
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                              担当管理者
-                            </label>
-
-                            {/* 選択済み管理者の表示 */}
-                            {formData.managerIds.length > 0 && (
-                              <div className="mb-3">
-                                <p className="text-xs text-gray-600 mb-2">選択済み ({formData.managerIds.length}名)</p>
-                                <div className="flex flex-wrap gap-2">
-                                  {formData.managerIds.map(managerId => {
-                                    const manager = managers.find(m => m.id === managerId);
-                                    return manager ? (
-                                      <span
-                                        key={managerId}
-                                        className="inline-flex items-center bg-emerald-100 text-emerald-800 text-xs font-medium px-3 py-1 rounded-full"
-                                      >
-                                        {manager.name}
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            setFormData(prev => ({
-                                              ...prev,
-                                              managerIds: prev.managerIds.filter(id => id !== managerId)
-                                            }));
-                                          }}
-                                          className="ml-2 hover:text-emerald-600"
-                                        >
-                                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                          </svg>
-                                        </button>
-                                      </span>
-                                    ) : null;
-                                  })}
-                                </div>
-                              </div>
-                            )}
-
-                            {/* プルダウン選択 */}
-                            <select
-                              value=""
-                              onChange={(e) => {
-                                const selectedId = e.target.value;
-                                if (selectedId && !formData.managerIds.includes(selectedId)) {
-                                  setFormData(prev => ({
-                                    ...prev,
-                                    managerIds: [...prev.managerIds, selectedId]
-                                  }));
-                                }
-                              }}
-                              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                            >
-                              <option value="">管理者を選択してください</option>
-                              {managers.filter(manager => !formData.managerIds.includes(manager.id)).map(manager => (
-                                <option key={manager.id} value={manager.id}>
-                                  {manager.name} ({manager.email})
-                                </option>
-                              ))}
-                            </select>
-
-                            {managers.length === 0 && (
-                              <p className="text-xs text-gray-500 mt-1">管理者権限を持つユーザーがいません</p>
-                            )}
-
-                            {formData.managerIds.length === managers.length && managers.length > 0 && (
-                              <p className="text-xs text-emerald-600 mt-1">全ての管理者が選択済みです</p>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          デフォルト勤務地
-                        </label>
-                        <input
-                          type="text"
-                          value={formData.defaultLocation}
-                          onChange={(e) => setFormData(prev => ({ ...prev, defaultLocation: e.target.value }))}
-                          className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-sm focus:border-purple-500 focus:ring-0 transition-all duration-200"
-                          placeholder="例: 大阪オフィス, 東京本社"
-                        />
-                        <p className="text-xs text-gray-500 mt-1">常勤シフト申請時に自動表示される勤務地</p>
+                        <h3 className="text-2xl font-bold text-white">新規ユーザー登録</h3>
+                        <p className="text-emerald-100 text-sm">新しいメンバーをシステムに追加</p>
                       </div>
                     </div>
-                  </div>
-
-                  {/* アクションボタン */}
-                  <div className="flex justify-end space-x-4 pt-8 border-t border-gray-200 mt-8">
                     <button
-                      type="button"
                       onClick={() => {
                         setShowCreateModal(false);
                         resetForm();
                       }}
-                      className="px-6 py-3 border-2 border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-all duration-200"
+                      className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-2 transition-all duration-200"
                     >
-                      キャンセル
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={loading}
-                      className="px-8 py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-lg text-sm font-medium hover:from-emerald-600 hover:to-emerald-700 disabled:from-gray-400 disabled:to-gray-400 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
-                    >
-                      {loading ? (
-                        <div className="flex items-center">
-                          <svg className="animate-spin -ml-1 mr-3 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                          </svg>
-                          作成中...
-                        </div>
-                      ) : (
-                        "ユーザーを作成"
-                      )}
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ユーザー編集モーダル */}
-        {showEditModal && selectedUser && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
-              {/* ヘッダー */}
-              <div className="bg-gradient-to-r from-blue-500 to-blue-600 px-8 py-6">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-10 h-10 bg-white bg-opacity-20 rounded-xl flex items-center justify-center">
-                      <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                       </svg>
-                    </div>
-                    <div>
-                      <h3 className="text-2xl font-bold text-white">ユーザー情報編集</h3>
-                      <p className="text-blue-100 text-sm">{selectedUser.name} の情報を編集</p>
-                    </div>
+                    </button>
                   </div>
-                  <button
-                    onClick={() => {
-                      setShowEditModal(false);
-                      setSelectedUser(null);
-                      resetForm();
-                    }}
-                    className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-2 transition-all duration-200"
-                  >
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
                 </div>
-              </div>
 
-              {/* コンテンツ */}
-              <div className="overflow-y-auto max-h-[calc(90vh-140px)]">
-                <form onSubmit={handleUpdateUser} className="p-8">
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    {/* 左カラム - 基本情報 */}
-                    <div className="space-y-6">
-                      <div className="bg-blue-50 rounded-xl p-6 border border-blue-100">
-                        <div className="flex items-center mb-4">
-                          <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center mr-3">
-                            <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                            </svg>
-                          </div>
-                          <h4 className="text-lg font-semibold text-blue-900">基本情報</h4>
-                        </div>
-
-                        <div className="space-y-4">
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                              ユーザーID <span className="text-xs text-gray-500 font-normal">（変更不可）</span>
-                            </label>
-                            <input
-                              type="text"
-                              value={formData.userId}
-                              readOnly={true}
-                              disabled={true}
-                              className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-sm bg-gray-100 text-gray-500 cursor-not-allowed"
-                            />
+                {/* コンテンツ */}
+                <div className="overflow-y-auto max-h-[calc(90vh-140px)]">
+                  <form onSubmit={handleCreateUser} className="p-8">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                      {/* 左カラム - 基本情報 */}
+                      <div className="space-y-6">
+                        <div className="bg-blue-50 rounded-xl p-6 border border-blue-100">
+                          <div className="flex items-center mb-4">
+                            <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center mr-3">
+                              <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                              </svg>
+                            </div>
+                            <h4 className="text-lg font-semibold text-blue-900">基本情報</h4>
                           </div>
 
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                              名前 <span className="text-red-500">*</span>
-                            </label>
-                            <input
-                              type="text"
-                              value={formData.name}
-                              onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                              className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-sm focus:border-blue-500 focus:ring-0 transition-all duration-200"
-                              required
-                            />
-                          </div>
+                          <div className="space-y-4">
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                ユーザーID
+                              </label>
+                              <input
+                                type="text"
+                                value={`${systemSettings?.companyUserIdPrefix || 'STFF'}XXXX`}
+                                readOnly={true}
+                                className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-sm focus:border-blue-500 focus:ring-0 transition-all duration-200 bg-gray-50 cursor-not-allowed"
+                                placeholder="自動生成されます"
+                              />
+                            </div>
 
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                              メールアドレス <span className="text-red-500">*</span>
-                            </label>
-                            <input
-                              type="email"
-                              value={formData.email}
-                              onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
-                              className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-sm focus:border-blue-500 focus:ring-0 transition-all duration-200"
-                              required
-                            />
-                          </div>
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                名前 <span className="text-red-500">*</span>
+                              </label>
+                              <input
+                                type="text"
+                                value={formData.name}
+                                onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                                className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-sm focus:border-blue-500 focus:ring-0 transition-all duration-200"
+                                placeholder="フルネームを入力"
+                                required
+                              />
+                            </div>
 
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                              新しいパスワード（変更する場合のみ）
-                            </label>
-                            <input
-                              type="password"
-                              value={formData.password}
-                              onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
-                              className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-sm focus:border-blue-500 focus:ring-0 transition-all duration-200"
-                              placeholder="変更しない場合は空のままにしてください"
-                            />
-                            <p className="text-xs text-gray-500 mt-1">空の場合は現在のパスワードが維持されます</p>
-                          </div>
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                メールアドレス <span className="text-red-500">*</span>
+                              </label>
+                              <input
+                                type="email"
+                                value={formData.email}
+                                onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+                                className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-sm focus:border-blue-500 focus:ring-0 transition-all duration-200"
+                                placeholder="example@company.com"
+                                required
+                              />
+                            </div>
 
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                              生年月日
-                            </label>
-                            <input
-                              type="date"
-                              value={formData.birthDate}
-                              onChange={(e) => setFormData(prev => ({ ...prev, birthDate: e.target.value }))}
-                              className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-sm focus:border-blue-500 focus:ring-0 transition-all duration-200"
-                            />
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                初期パスワード <span className="text-red-500">*</span>
+                              </label>
+                              <input
+                                type="password"
+                                value={formData.password}
+                                onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
+                                className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-sm focus:border-blue-500 focus:ring-0 transition-all duration-200"
+                                placeholder="8文字以上の安全なパスワード"
+                                required
+                              />
+                              <p className="text-xs text-gray-500 mt-1">ユーザーは初回ログイン後にパスワード変更を推奨</p>
+                            </div>
+
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                生年月日
+                              </label>
+                              <input
+                                type="date"
+                                value={formData.birthDate}
+                                onChange={(e) => setFormData(prev => ({ ...prev, birthDate: e.target.value }))}
+                                className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-sm focus:border-blue-500 focus:ring-0 transition-all duration-200"
+                              />
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
 
-                    {/* 右カラム - 権限・所属情報・設定 */}
-                    <div className="space-y-6">
-                      <div className="bg-purple-50 rounded-xl p-6 border border-purple-100">
-                        <div className="flex items-center mb-4">
-                          <div className="w-8 h-8 bg-purple-500 rounded-lg flex items-center justify-center mr-3">
-                            <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.031 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                            </svg>
-                          </div>
-                          <h4 className="text-lg font-semibold text-purple-900">権限・所属情報</h4>
-                        </div>
-
-                        <div className="space-y-4">
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                              権限ロール <span className="text-red-500">*</span>
-                            </label>
-                            <select
-                              value={formData.customRoleId}
-                              onChange={(e) => {
-                                setFormData(prev => ({ ...prev, customRoleId: e.target.value }));
-                              }}
-                              className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-sm focus:border-purple-500 focus:ring-0 transition-all duration-200"
-                              required
-                            >
-                              <option value="">ロールを選択してください</option>
-                              {customRoles.map(role => (
-                                <option key={role.id} value={role.id}>
-                                  {role.displayName || role.name}
-                                </option>
-                              ))}
-                            </select>
+                      {/* 右カラム - 権限・所属情報 */}
+                      <div className="space-y-6">
+                        <div className="bg-purple-50 rounded-xl p-6 border border-purple-100">
+                          <div className="flex items-center mb-4">
+                            <div className="w-8 h-8 bg-purple-500 rounded-lg flex items-center justify-center mr-3">
+                              <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.031 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                              </svg>
+                            </div>
+                            <h4 className="text-lg font-semibold text-purple-900">権限・所属情報</h4>
                           </div>
 
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                              所属会社
-                            </label>
-                            <select
-                              value={formData.partnerId}
-                              onChange={(e) => setFormData(prev => ({ ...prev, partnerId: e.target.value }))}
-                              className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-sm focus:border-purple-500 focus:ring-0 transition-all duration-200"
-                            >
-                              <option value="">自社</option>
-                              {partners.map(partner => (
-                                <option key={partner.id} value={partner.id}>{partner.name}</option>
-                              ))}
-                            </select>
-                          </div>
+                          <div className="space-y-4">
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                権限ロール <span className="text-red-500">*</span>
+                              </label>
+                              <select
+                                value={formData.customRoleId}
+                                onChange={(e) => {
+                                  setFormData(prev => ({ ...prev, customRoleId: e.target.value }));
+                                }}
+                                className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-sm focus:border-purple-500 focus:ring-0 transition-all duration-200"
+                                required
+                              >
+                                <option value="">ロールを選択してください</option>
+                                {customRoles.filter(role => (role.rank || 0) <= myRank).map(role => (
+                                  <option key={role.id} value={role.id}>
+                                    {role.displayName || role.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
 
-                          {/* 担当管理者選択 - プルダウン形式 */}
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                              担当管理者
-                            </label>
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                所属会社
+                              </label>
+                              <select
+                                value={formData.partnerId}
+                                onChange={(e) => setFormData(prev => ({ ...prev, partnerId: e.target.value }))}
+                                className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-sm focus:border-purple-500 focus:ring-0 transition-all duration-200"
+                              >
+                                <option value="">自社</option>
+                                {partners.map(partner => (
+                                  <option key={partner.id} value={partner.id}>{partner.name}</option>
+                                ))}
+                              </select>
+                            </div>
 
-                            {/* 選択済み管理者の表示 */}
-                            {formData.managerIds.length > 0 && (
-                              <div className="mb-3">
-                                <p className="text-xs text-gray-600 mb-2">選択済み ({formData.managerIds.length}名)</p>
-                                <div className="flex flex-wrap gap-2">
-                                  {formData.managerIds.map(managerId => {
-                                    const manager = managers.find(m => m.id === managerId);
-                                    return manager ? (
-                                      <span
-                                        key={managerId}
-                                        className="inline-flex items-center bg-blue-100 text-blue-800 text-xs font-medium px-3 py-1 rounded-full"
-                                      >
-                                        {manager.name}
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            setFormData(prev => ({
-                                              ...prev,
-                                              managerIds: prev.managerIds.filter(id => id !== managerId)
-                                            }));
-                                          }}
-                                          className="ml-2 hover:text-blue-600"
+                            {/* 担当管理者選択 - プルダウン形式 */}
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                担当管理者
+                              </label>
+
+                              {/* 選択済み管理者の表示 */}
+                              {formData.managerIds.length > 0 && (
+                                <div className="mb-3">
+                                  <p className="text-xs text-gray-600 mb-2">選択済み ({formData.managerIds.length}名)</p>
+                                  <div className="flex flex-wrap gap-2">
+                                    {formData.managerIds.map(managerId => {
+                                      const manager = managers.find(m => m.id === managerId);
+                                      return manager ? (
+                                        <span
+                                          key={managerId}
+                                          className="inline-flex items-center bg-emerald-100 text-emerald-800 text-xs font-medium px-3 py-1 rounded-full"
                                         >
-                                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                          </svg>
-                                        </button>
-                                      </span>
-                                    ) : null;
-                                  })}
+                                          {manager.name}
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setFormData(prev => ({
+                                                ...prev,
+                                                managerIds: prev.managerIds.filter(id => id !== managerId)
+                                              }));
+                                            }}
+                                            className="ml-2 hover:text-emerald-600"
+                                          >
+                                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                            </svg>
+                                          </button>
+                                        </span>
+                                      ) : null;
+                                    })}
+                                  </div>
                                 </div>
-                              </div>
-                            )}
+                              )}
 
-                            {/* プルダウン選択 */}
-                            <select
-                              value=""
-                              onChange={(e) => {
-                                const selectedId = e.target.value;
-                                if (selectedId && !formData.managerIds.includes(selectedId)) {
-                                  setFormData(prev => ({
-                                    ...prev,
-                                    managerIds: [...prev.managerIds, selectedId]
-                                  }));
-                                }
-                              }}
-                              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                            >
-                              <option value="">管理者を選択してください</option>
-                              {managers
-                                .filter(manager => manager.id !== selectedUser?.id && !formData.managerIds.includes(manager.id))
-                                .map(manager => (
+                              {/* プルダウン選択 */}
+                              <select
+                                value=""
+                                onChange={(e) => {
+                                  const selectedId = e.target.value;
+                                  if (selectedId && !formData.managerIds.includes(selectedId)) {
+                                    setFormData(prev => ({
+                                      ...prev,
+                                      managerIds: [...prev.managerIds, selectedId]
+                                    }));
+                                  }
+                                }}
+                                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                              >
+                                <option value="">管理者を選択してください</option>
+                                {managers.filter(manager => !formData.managerIds.includes(manager.id)).map(manager => (
                                   <option key={manager.id} value={manager.id}>
                                     {manager.name} ({manager.email})
                                   </option>
                                 ))}
-                            </select>
+                              </select>
 
-                            {managers.filter(manager => manager.id !== selectedUser?.id).length === 0 && (
-                              <p className="text-xs text-gray-500 mt-1">選択可能な管理者がいません</p>
-                            )}
-
-                            {formData.managerIds.length === managers.filter(manager => manager.id !== selectedUser?.id).length &&
-                              managers.filter(manager => manager.id !== selectedUser?.id).length > 0 && (
-                                <p className="text-xs text-blue-600 mt-1">選択可能な全ての管理者が選択済みです</p>
+                              {managers.length === 0 && (
+                                <p className="text-xs text-gray-500 mt-1">管理者権限を持つユーザーがいません</p>
                               )}
+
+                              {formData.managerIds.length === managers.length && managers.length > 0 && (
+                                <p className="text-xs text-emerald-600 mt-1">全ての管理者が選択済みです</p>
+                              )}
+                            </div>
                           </div>
                         </div>
 
@@ -1463,248 +1201,548 @@ export default function AdminUsersPage() {
                             className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-sm focus:border-purple-500 focus:ring-0 transition-all duration-200"
                             placeholder="例: 大阪オフィス, 東京本社"
                           />
+                          <p className="text-xs text-gray-500 mt-1">常勤シフト申請時に自動表示される勤務地</p>
                         </div>
                       </div>
                     </div>
 
-                    {/* 機能設定 */}
-                    <div className="bg-green-50 rounded-xl p-6 border border-green-100">
-                      <div className="flex items-center mb-4">
-                        <div className="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center mr-3">
-                          <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                          </svg>
-                        </div>
-                        <h4 className="text-lg font-semibold text-green-900">機能設定</h4>
+                    {/* アクションボタン */}
+                    <div className="flex justify-end space-x-4 pt-8 border-t border-gray-200 mt-8">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowCreateModal(false);
+                          resetForm();
+                        }}
+                        className="px-6 py-3 border-2 border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-all duration-200"
+                      >
+                        キャンセル
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={loading}
+                        className="px-8 py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-lg text-sm font-medium hover:from-emerald-600 hover:to-emerald-700 disabled:from-gray-400 disabled:to-gray-400 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+                      >
+                        {loading ? (
+                          <div className="flex items-center">
+                            <svg className="animate-spin -ml-1 mr-3 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            作成中...
+                          </div>
+                        ) : (
+                          "ユーザーを作成"
+                        )}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
+          )
+        }
+
+        {/* ユーザー編集モーダル */}
+        {
+          showEditModal && selectedUser && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
+                {/* ヘッダー */}
+                <div className="bg-gradient-to-r from-blue-500 to-blue-600 px-8 py-6">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 bg-white bg-opacity-20 rounded-xl flex items-center justify-center">
+                        <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
                       </div>
-
-                      <div className="space-y-4">
-                        <label className="flex items-center p-3 border border-green-200 rounded-lg hover:bg-green-100 transition-colors duration-150 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={formData.gpsEnabled}
-                            onChange={(e) => setFormData(prev => ({ ...prev, gpsEnabled: e.target.checked }))}
-                            className="rounded border-green-300 text-green-600 focus:ring-green-500 focus:ring-offset-0 mr-3"
-                          />
-                          <div>
-                            <p className="font-medium text-green-900">GPS取得を有効にする</p>
-                            <p className="text-sm text-green-700">勤怠打刻時に位置情報を取得</p>
-                          </div>
-                        </label>
-
-                        <label className="flex items-center p-3 border border-green-200 rounded-lg hover:bg-green-100 transition-colors duration-150 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={formData.wakeUpEnabled}
-                            onChange={(e) => setFormData(prev => ({ ...prev, wakeUpEnabled: e.target.checked }))}
-                            className="rounded border-green-300 text-green-600 focus:ring-green-500 focus:ring-offset-0 mr-3"
-                          />
-                          <div>
-                            <p className="font-medium text-green-900">起床報告を有効にする</p>
-                            <p className="text-sm text-green-700">起床報告ボタンを表示</p>
-                          </div>
-                        </label>
-
-                        <label className="flex items-center p-3 border border-green-200 rounded-lg hover:bg-green-100 transition-colors duration-150 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={formData.departureEnabled}
-                            onChange={(e) => setFormData(prev => ({ ...prev, departureEnabled: e.target.checked }))}
-                            className="rounded border-green-300 text-green-600 focus:ring-green-500 focus:ring-offset-0 mr-3"
-                          />
-                          <div>
-                            <p className="font-medium text-green-900">出発報告を有効にする</p>
-                            <p className="text-sm text-green-700">出発報告ボタンを表示</p>
-                          </div>
-                        </label>
+                      <div>
+                        <h3 className="text-2xl font-bold text-white">ユーザー情報編集</h3>
+                        <p className="text-blue-100 text-sm">{selectedUser.name} の情報を編集</p>
                       </div>
                     </div>
-
-                    {/* アカウント状態 */}
-                    <div className="bg-red-50 rounded-xl p-6 border border-red-100 mt-6">
-                      <div className="flex items-center mb-4">
-                        <div className="w-8 h-8 bg-red-500 rounded-lg flex items-center justify-center mr-3">
-                          <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                          </svg>
-                        </div>
-                        <h4 className="text-lg font-semibold text-red-900">アカウント状態</h4>
-                      </div>
-
-                      <div className="space-y-4">
-                        <label className="flex items-center p-3 border border-red-200 rounded-lg hover:bg-red-100 transition-colors duration-150 cursor-pointer bg-white">
-                          <input
-                            type="checkbox"
-                            checked={formData.isActive}
-                            onChange={(e) => setFormData(prev => ({ ...prev, isActive: e.target.checked }))}
-                            className="rounded border-red-300 text-red-600 focus:ring-red-500 focus:ring-offset-0 mr-3 w-5 h-5"
-                          />
-                          <div>
-                            <p className="font-medium text-red-900">ログインを許可する（アクティブ）</p>
-                            <p className="text-sm text-red-700">チェックを外すと、このユーザーはログインできなくなります。</p>
-                          </div>
-                        </label>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* アクションボタン */}
-                  <div className="flex justify-end space-x-4 pt-8 border-t border-gray-200 mt-8">
                     <button
-                      type="button"
                       onClick={() => {
                         setShowEditModal(false);
                         setSelectedUser(null);
                         resetForm();
                       }}
-                      className="px-6 py-3 border-2 border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-all duration-200"
+                      className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-2 transition-all duration-200"
                     >
-                      キャンセル
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={loading}
-                      className="px-8 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg text-sm font-medium hover:from-blue-600 hover:to-blue-700 disabled:from-gray-400 disabled:to-gray-400 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
-                    >
-                      {loading ? (
-                        <div className="flex items-center">
-                          <svg className="animate-spin -ml-1 mr-3 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                          </svg>
-                          更新中...
-                        </div>
-                      ) : (
-                        "更新"
-                      )}
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* 新しいパートナー企業追加モーダル */}
-        {showNewPartnerModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden">
-              {/* ヘッダー */}
-              <div className="bg-gradient-to-r from-orange-500 to-orange-600 px-8 py-6">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-10 h-10 bg-white bg-opacity-20 rounded-xl flex items-center justify-center">
-                      <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                       </svg>
-                    </div>
-                    <div>
-                      <h3 className="text-2xl font-bold text-white">新規パートナー企業登録</h3>
-                      <p className="text-orange-100 text-sm">新しいパートナー企業をシステムに追加</p>
-                    </div>
+                    </button>
                   </div>
-                  <button
-                    onClick={() => {
-                      setShowNewPartnerModal(false);
-                      setNewPartnerName("");
-                    }}
-                    className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-2 transition-all duration-200"
-                  >
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
+                </div>
+
+                {/* コンテンツ */}
+                <div className="overflow-y-auto max-h-[calc(90vh-140px)]">
+                  <form onSubmit={handleUpdateUser} className="p-8">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                      {/* 左カラム - 基本情報 */}
+                      <div className="space-y-6">
+                        <div className="bg-blue-50 rounded-xl p-6 border border-blue-100">
+                          <div className="flex items-center mb-4">
+                            <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center mr-3">
+                              <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                              </svg>
+                            </div>
+                            <h4 className="text-lg font-semibold text-blue-900">基本情報</h4>
+                          </div>
+
+                          <div className="space-y-4">
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                ユーザーID <span className="text-xs text-gray-500 font-normal">（変更不可）</span>
+                              </label>
+                              <input
+                                type="text"
+                                value={formData.userId}
+                                readOnly={true}
+                                disabled={true}
+                                className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-sm bg-gray-100 text-gray-500 cursor-not-allowed"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                名前 <span className="text-red-500">*</span>
+                              </label>
+                              <input
+                                type="text"
+                                value={formData.name}
+                                onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                                className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-sm focus:border-blue-500 focus:ring-0 transition-all duration-200"
+                                required
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                メールアドレス <span className="text-red-500">*</span>
+                              </label>
+                              <input
+                                type="email"
+                                value={formData.email}
+                                onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+                                className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-sm focus:border-blue-500 focus:ring-0 transition-all duration-200"
+                                required
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                新しいパスワード（変更する場合のみ）
+                              </label>
+                              <input
+                                type="password"
+                                value={formData.password}
+                                onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
+                                className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-sm focus:border-blue-500 focus:ring-0 transition-all duration-200"
+                                placeholder="変更しない場合は空のままにしてください"
+                              />
+                              <p className="text-xs text-gray-500 mt-1">空の場合は現在のパスワードが維持されます</p>
+                            </div>
+
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                生年月日
+                              </label>
+                              <input
+                                type="date"
+                                value={formData.birthDate}
+                                onChange={(e) => setFormData(prev => ({ ...prev, birthDate: e.target.value }))}
+                                className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-sm focus:border-blue-500 focus:ring-0 transition-all duration-200"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 右カラム - 権限・所属情報・設定 */}
+                      <div className="space-y-6">
+                        <div className="bg-purple-50 rounded-xl p-6 border border-purple-100">
+                          <div className="flex items-center mb-4">
+                            <div className="w-8 h-8 bg-purple-500 rounded-lg flex items-center justify-center mr-3">
+                              <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.031 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                              </svg>
+                            </div>
+                            <h4 className="text-lg font-semibold text-purple-900">権限・所属情報</h4>
+                          </div>
+
+                          <div className="space-y-4">
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                権限ロール <span className="text-red-500">*</span>
+                              </label>
+                              <select
+                                value={formData.customRoleId}
+                                onChange={(e) => {
+                                  setFormData(prev => ({ ...prev, customRoleId: e.target.value }));
+                                }}
+                                className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-sm focus:border-purple-500 focus:ring-0 transition-all duration-200"
+                                required
+                              >
+                                <option value="">ロールを選択してください</option>
+                                {customRoles.filter(role => (role.rank || 0) <= myRank).map(role => (
+                                  <option key={role.id} value={role.id}>
+                                    {role.displayName || role.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                所属会社
+                              </label>
+                              <select
+                                value={formData.partnerId}
+                                onChange={(e) => setFormData(prev => ({ ...prev, partnerId: e.target.value }))}
+                                className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-sm focus:border-purple-500 focus:ring-0 transition-all duration-200"
+                              >
+                                <option value="">自社</option>
+                                {partners.map(partner => (
+                                  <option key={partner.id} value={partner.id}>{partner.name}</option>
+                                ))}
+                              </select>
+                            </div>
+
+                            {/* 担当管理者選択 - プルダウン形式 */}
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                担当管理者
+                              </label>
+
+                              {/* 選択済み管理者の表示 */}
+                              {formData.managerIds.length > 0 && (
+                                <div className="mb-3">
+                                  <p className="text-xs text-gray-600 mb-2">選択済み ({formData.managerIds.length}名)</p>
+                                  <div className="flex flex-wrap gap-2">
+                                    {formData.managerIds.map(managerId => {
+                                      const manager = managers.find(m => m.id === managerId);
+                                      return manager ? (
+                                        <span
+                                          key={managerId}
+                                          className="inline-flex items-center bg-blue-100 text-blue-800 text-xs font-medium px-3 py-1 rounded-full"
+                                        >
+                                          {manager.name}
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setFormData(prev => ({
+                                                ...prev,
+                                                managerIds: prev.managerIds.filter(id => id !== managerId)
+                                              }));
+                                            }}
+                                            className="ml-2 hover:text-blue-600"
+                                          >
+                                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                            </svg>
+                                          </button>
+                                        </span>
+                                      ) : null;
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* プルダウン選択 */}
+                              <select
+                                value=""
+                                onChange={(e) => {
+                                  const selectedId = e.target.value;
+                                  if (selectedId && !formData.managerIds.includes(selectedId)) {
+                                    setFormData(prev => ({
+                                      ...prev,
+                                      managerIds: [...prev.managerIds, selectedId]
+                                    }));
+                                  }
+                                }}
+                                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              >
+                                <option value="">管理者を選択してください</option>
+                                {managers
+                                  .filter(manager => manager.id !== selectedUser?.id && !formData.managerIds.includes(manager.id))
+                                  .map(manager => (
+                                    <option key={manager.id} value={manager.id}>
+                                      {manager.name} ({manager.email})
+                                    </option>
+                                  ))}
+                              </select>
+
+                              {managers.filter(manager => manager.id !== selectedUser?.id).length === 0 && (
+                                <p className="text-xs text-gray-500 mt-1">選択可能な管理者がいません</p>
+                              )}
+
+                              {formData.managerIds.length === managers.filter(manager => manager.id !== selectedUser?.id).length &&
+                                managers.filter(manager => manager.id !== selectedUser?.id).length > 0 && (
+                                  <p className="text-xs text-blue-600 mt-1">選択可能な全ての管理者が選択済みです</p>
+                                )}
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              デフォルト勤務地
+                            </label>
+                            <input
+                              type="text"
+                              value={formData.defaultLocation}
+                              onChange={(e) => setFormData(prev => ({ ...prev, defaultLocation: e.target.value }))}
+                              className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-sm focus:border-purple-500 focus:ring-0 transition-all duration-200"
+                              placeholder="例: 大阪オフィス, 東京本社"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 機能設定 */}
+                      <div className="bg-green-50 rounded-xl p-6 border border-green-100">
+                        <div className="flex items-center mb-4">
+                          <div className="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center mr-3">
+                            <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                          </div>
+                          <h4 className="text-lg font-semibold text-green-900">機能設定</h4>
+                        </div>
+
+                        <div className="space-y-4">
+                          <label className="flex items-center p-3 border border-green-200 rounded-lg hover:bg-green-100 transition-colors duration-150 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={formData.gpsEnabled}
+                              onChange={(e) => setFormData(prev => ({ ...prev, gpsEnabled: e.target.checked }))}
+                              className="rounded border-green-300 text-green-600 focus:ring-green-500 focus:ring-offset-0 mr-3"
+                            />
+                            <div>
+                              <p className="font-medium text-green-900">GPS取得を有効にする</p>
+                              <p className="text-sm text-green-700">勤怠打刻時に位置情報を取得</p>
+                            </div>
+                          </label>
+
+                          <label className="flex items-center p-3 border border-green-200 rounded-lg hover:bg-green-100 transition-colors duration-150 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={formData.wakeUpEnabled}
+                              onChange={(e) => setFormData(prev => ({ ...prev, wakeUpEnabled: e.target.checked }))}
+                              className="rounded border-green-300 text-green-600 focus:ring-green-500 focus:ring-offset-0 mr-3"
+                            />
+                            <div>
+                              <p className="font-medium text-green-900">起床報告を有効にする</p>
+                              <p className="text-sm text-green-700">起床報告ボタンを表示</p>
+                            </div>
+                          </label>
+
+                          <label className="flex items-center p-3 border border-green-200 rounded-lg hover:bg-green-100 transition-colors duration-150 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={formData.departureEnabled}
+                              onChange={(e) => setFormData(prev => ({ ...prev, departureEnabled: e.target.checked }))}
+                              className="rounded border-green-300 text-green-600 focus:ring-green-500 focus:ring-offset-0 mr-3"
+                            />
+                            <div>
+                              <p className="font-medium text-green-900">出発報告を有効にする</p>
+                              <p className="text-sm text-green-700">出発報告ボタンを表示</p>
+                            </div>
+                          </label>
+                        </div>
+                      </div>
+
+                      {/* アカウント状態 */}
+                      <div className="bg-red-50 rounded-xl p-6 border border-red-100 mt-6">
+                        <div className="flex items-center mb-4">
+                          <div className="w-8 h-8 bg-red-500 rounded-lg flex items-center justify-center mr-3">
+                            <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                            </svg>
+                          </div>
+                          <h4 className="text-lg font-semibold text-red-900">アカウント状態</h4>
+                        </div>
+
+                        <div className="space-y-4">
+                          <label className="flex items-center p-3 border border-red-200 rounded-lg hover:bg-red-100 transition-colors duration-150 cursor-pointer bg-white">
+                            <input
+                              type="checkbox"
+                              checked={formData.isActive}
+                              onChange={(e) => setFormData(prev => ({ ...prev, isActive: e.target.checked }))}
+                              className="rounded border-red-300 text-red-600 focus:ring-red-500 focus:ring-offset-0 mr-3 w-5 h-5"
+                            />
+                            <div>
+                              <p className="font-medium text-red-900">ログインを許可する（アクティブ）</p>
+                              <p className="text-sm text-red-700">チェックを外すと、このユーザーはログインできなくなります。</p>
+                            </div>
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* アクションボタン */}
+                    <div className="flex justify-end space-x-4 pt-8 border-t border-gray-200 mt-8">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowEditModal(false);
+                          setSelectedUser(null);
+                          resetForm();
+                        }}
+                        className="px-6 py-3 border-2 border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-all duration-200"
+                      >
+                        キャンセル
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={loading}
+                        className="px-8 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg text-sm font-medium hover:from-blue-600 hover:to-blue-700 disabled:from-gray-400 disabled:to-gray-400 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+                      >
+                        {loading ? (
+                          <div className="flex items-center">
+                            <svg className="animate-spin -ml-1 mr-3 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            更新中...
+                          </div>
+                        ) : (
+                          "更新"
+                        )}
+                      </button>
+                    </div>
+                  </form>
                 </div>
               </div>
+            </div>
+          )
+        }
 
-              {/* コンテンツ */}
-              <div className="p-8">
-                <form onSubmit={handleCreatePartner} className="space-y-6">
-                  {/* 企業情報セクション */}
-                  <div className="bg-orange-50 rounded-xl p-6 border border-orange-100">
-                    <div className="flex items-center mb-4">
-                      <div className="w-8 h-8 bg-orange-500 rounded-lg flex items-center justify-center mr-3">
-                        <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        {/* 新しいパートナー企業追加モーダル */}
+        {
+          showNewPartnerModal && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden">
+                {/* ヘッダー */}
+                <div className="bg-gradient-to-r from-orange-500 to-orange-600 px-8 py-6">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 bg-white bg-opacity-20 rounded-xl flex items-center justify-center">
+                        <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                         </svg>
                       </div>
-                      <h4 className="text-lg font-semibold text-orange-900">企業情報</h4>
-                    </div>
-
-                    <div className="space-y-4">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          会社名 <span className="text-red-500">*</span>
-                        </label>
-                        <input
-                          type="text"
-                          value={newPartnerName}
-                          onChange={(e) => setNewPartnerName(e.target.value)}
-                          className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-sm focus:border-orange-500 focus:ring-0 transition-all duration-200"
-                          placeholder="例: 株式会社サンプル, Sample Corporation"
-                          required
-                        />
-                        <p className="text-xs text-gray-500 mt-1">正式な会社名を入力してください</p>
+                        <h3 className="text-2xl font-bold text-white">新規パートナー企業登録</h3>
+                        <p className="text-orange-100 text-sm">新しいパートナー企業をシステムに追加</p>
                       </div>
                     </div>
-                  </div>
-
-                  {/* 説明セクション */}
-                  <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
-                    <div className="flex items-start space-x-3">
-                      <div className="flex-shrink-0">
-                        <svg className="w-5 h-5 text-blue-500 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                      </div>
-                      <div>
-                        <h5 className="text-sm font-medium text-blue-900 mb-1">パートナー企業について</h5>
-                        <p className="text-sm text-blue-800">
-                          パートナー企業は、TimeBaseシステムを利用する外部企業です。<br />
-                          登録後、この会社に所属するユーザーを作成できるようになります。
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* アクションボタン */}
-                  <div className="flex justify-end space-x-4 pt-4 border-t border-gray-200">
                     <button
-                      type="button"
                       onClick={() => {
                         setShowNewPartnerModal(false);
                         setNewPartnerName("");
                       }}
-                      className="px-6 py-3 border-2 border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-all duration-200"
+                      className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-2 transition-all duration-200"
                     >
-                      キャンセル
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={loading || !newPartnerName.trim()}
-                      className="px-8 py-3 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-lg text-sm font-medium hover:from-orange-600 hover:to-orange-700 disabled:from-gray-400 disabled:to-gray-400 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
-                    >
-                      {loading ? (
-                        <div className="flex items-center">
-                          <svg className="animate-spin -ml-1 mr-3 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                          </svg>
-                          登録中...
-                        </div>
-                      ) : (
-                        "パートナー企業を登録"
-                      )}
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
                     </button>
                   </div>
-                </form>
+                </div>
+
+                {/* コンテンツ */}
+                <div className="p-8">
+                  <form onSubmit={handleCreatePartner} className="space-y-6">
+                    {/* 企業情報セクション */}
+                    <div className="bg-orange-50 rounded-xl p-6 border border-orange-100">
+                      <div className="flex items-center mb-4">
+                        <div className="w-8 h-8 bg-orange-500 rounded-lg flex items-center justify-center mr-3">
+                          <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                          </svg>
+                        </div>
+                        <h4 className="text-lg font-semibold text-orange-900">企業情報</h4>
+                      </div>
+
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            会社名 <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={newPartnerName}
+                            onChange={(e) => setNewPartnerName(e.target.value)}
+                            className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-sm focus:border-orange-500 focus:ring-0 transition-all duration-200"
+                            placeholder="例: 株式会社サンプル, Sample Corporation"
+                            required
+                          />
+                          <p className="text-xs text-gray-500 mt-1">正式な会社名を入力してください</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 説明セクション */}
+                    <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
+                      <div className="flex items-start space-x-3">
+                        <div className="flex-shrink-0">
+                          <svg className="w-5 h-5 text-blue-500 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                        </div>
+                        <div>
+                          <h5 className="text-sm font-medium text-blue-900 mb-1">パートナー企業について</h5>
+                          <p className="text-sm text-blue-800">
+                            パートナー企業は、TimeBaseシステムを利用する外部企業です。<br />
+                            登録後、この会社に所属するユーザーを作成できるようになります。
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* アクションボタン */}
+                    <div className="flex justify-end space-x-4 pt-4 border-t border-gray-200">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowNewPartnerModal(false);
+                          setNewPartnerName("");
+                        }}
+                        className="px-6 py-3 border-2 border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-all duration-200"
+                      >
+                        キャンセル
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={loading || !newPartnerName.trim()}
+                        className="px-8 py-3 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-lg text-sm font-medium hover:from-orange-600 hover:to-orange-700 disabled:from-gray-400 disabled:to-gray-400 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+                      >
+                        {loading ? (
+                          <div className="flex items-center">
+                            <svg className="animate-spin -ml-1 mr-3 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            登録中...
+                          </div>
+                        ) : (
+                          "パートナー企業を登録"
+                        )}
+                      </button>
+                    </div>
+                  </form>
+                </div>
               </div>
             </div>
-          </div>
-        )}
-      </div>
+          )
+        }
+      </div >
 
-    </PageAccessGuard>
+    </PageAccessGuard >
   );
 }

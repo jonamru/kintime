@@ -505,7 +505,7 @@ export default function ExpensePage() {
                           往復・片道 <span className="text-red-500">*</span>
                         </label>
                         <div className="flex gap-4">
-                          <label className="flex items-center">
+                          <label className="flex items-center text-gray-900 font-medium">
                             <input
                               type="radio"
                               value="ONE_WAY"
@@ -515,7 +515,7 @@ export default function ExpensePage() {
                             />
                             片道
                           </label>
-                          <label className="flex items-center">
+                          <label className="flex items-center text-gray-900 font-medium">
                             <input
                               type="radio"
                               value="ROUND_TRIP"

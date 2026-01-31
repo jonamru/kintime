@@ -505,3 +505,46 @@ export async function getAccessibleUserIds(
     return [];
   }
 }
+
+// ユーザーのアクセスレベル（ランク）を取得
+export async function getUserRank(userId: string): Promise<number> {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { customRole: true },
+    });
+
+    return user?.customRole?.rank ?? 0;
+  } catch (error) {
+    console.error("getUserRank エラー:", error);
+    return 0; // デフォルトは最低ランク
+  }
+}
+
+// ユーザー管理権限チェック（ランク考慮）
+// 実行者のランク > 対象者のランク である必要がある（自分自身は常に編集可とする場合も考慮）
+export async function canManageUser(actorId: string, targetUserId: string): Promise<boolean> {
+  // 自分自身は常に許可（プロフィールの更新など）
+  if (actorId === targetUserId) {
+    return true;
+  }
+
+  const actorRank = await getUserRank(actorId);
+  const targetRank = await getUserRank(targetUserId);
+
+  console.log(`[Permission Debug] Rank check: Actor(${actorId}) Rank=${actorRank} vs Target(${targetUserId}) Rank=${targetRank}`);
+
+  // 実行者のランクが対象者のランクより高くなければならない（同格も不可）
+  return actorRank > targetRank;
+}
+
+// ロール割り当て・操作権限チェック
+// 割り当てようとしているロールのランク <= 実行者のランク である必要がある
+export async function canAssignRole(actorId: string, roleRank: number): Promise<boolean> {
+  const actorRank = await getUserRank(actorId);
+
+  console.log(`[Permission Debug] Role assign check: Actor(${actorId}) Rank=${actorRank} vs RoleRank=${roleRank}`);
+
+  // 自分より高いランクのロールは付与できない（同格は可とするか？仕様書には「自分より高いランク...はできない」とあるので同格は可）
+  return actorRank >= roleRank;
+}

@@ -81,7 +81,10 @@ export async function GET(request: NextRequest) {
             select: { name: true }
           }
         },
-        orderBy: { name: 'asc' }
+        orderBy: [
+          { partner: { name: 'asc' } },
+          { userId: 'asc' }
+        ]
       })
 
       if (users.length === 0) {
@@ -109,7 +112,10 @@ export async function GET(request: NextRequest) {
             select: { name: true }
           }
         },
-        orderBy: { name: 'asc' }
+        orderBy: [
+          { partner: { name: 'asc' } },
+          { userId: 'asc' }
+        ]
       })
 
     } else if (scope === 'all') {
@@ -123,7 +129,10 @@ export async function GET(request: NextRequest) {
             select: { name: true }
           }
         },
-        orderBy: [{ partnerId: 'asc' }, { name: 'asc' }]
+        orderBy: [
+          { partner: { name: 'asc' } },
+          { userId: 'asc' }
+        ]
       })
     }
 

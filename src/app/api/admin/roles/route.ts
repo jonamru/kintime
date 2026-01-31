@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
-import { hasPermission } from "@/lib/permissions";
+import { hasPermission, canAssignRole } from "@/lib/permissions";
 import type { User, Attendance, Shift, Expense, CustomRole, Partner, ApiResponse, BulkEditPermissions } from "@/types/common";
 
 export async function GET(request: Request) {
@@ -45,6 +45,16 @@ export async function POST(request: Request) {
 
     const data = await request.json();
 
+    // ランクベースの権限チェック: 自分のランク以下のロールのみ作成可能
+    const targetRank = data.rank || 0;
+    const canAssign = await canAssignRole(currentUser.id, targetRank);
+    if (!canAssign) {
+      return NextResponse.json(
+        { error: "指定されたランクのロールを作成する権限がありません" },
+        { status: 403 }
+      );
+    }
+
     // ロール名の重複チェック
     const existingRole = await prisma.customRole.findUnique({
       where: { name: data.name },
@@ -65,6 +75,7 @@ export async function POST(request: Request) {
         isSystem: false,
         permissions: data.permissions,
         pageAccess: data.pageAccess,
+        rank: targetRank,
       },
     });
 

@@ -13,7 +13,7 @@ export async function middleware(request: NextRequest) {
     const path = request.nextUrl.pathname;
 
     // レート制限のパラメータ
-    let limit = 100; // デフォルト: 100回/分
+    let limit = 500; // デフォルト: 500回/分（緩和）
     let type = 'GLOBAL';
 
     // ログイン関連の厳格な制限

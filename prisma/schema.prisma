@@ -241,8 +241,9 @@ model CustomRole {
   isSystem    Boolean  @default(false)
   permissions   Json      // 権限設定（カテゴリごとのレベルとスコープ）
   pageAccess    Json?     // ページアクセス権限
+  rank          Int       @default(0) // アクセスレベル (0-4)
   createdAt     DateTime  @default(now())
-  updatedAt   DateTime @updatedAt
+  updatedAt     DateTime @updatedAt
   users       User[]
 }
 

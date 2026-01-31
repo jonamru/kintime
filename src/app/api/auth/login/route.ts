@@ -44,6 +44,7 @@ export async function POST(request: Request) {
             displayName: true,
             permissions: true,
             pageAccess: true,
+            rank: true,
           },
         },
       },

@@ -317,7 +317,7 @@ export default function DashboardPage() {
                 </div>
                 <h1 className="text-lg md:text-2xl font-bold text-[#4A90E2]">TimeBase</h1>
               </div>
-              <p className="text-xs text-gray-500 hidden md:block">勤怠管理システム</p>
+              <p className="text-xs text-gray-500 hidden md:block">業務管理システム</p>
             </div>
           </div>
 
@@ -487,58 +487,62 @@ export default function DashboardPage() {
             )}
 
             {/* 管理者メニュー */}
-            {isUserAdmin(user) && (
-              <div>
-                <h3 className="px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">管理者メニュー</h3>
-                <div className="space-y-2">
-                  {hasUserPageAccess(user, 'adminUsers') && (
-                    <a
-                      href="/admin/users"
-                      className="group flex items-center px-3 py-3 md:py-2 text-sm font-medium text-gray-700 rounded-lg hover:bg-blue-50 hover:text-blue-600"
-                    >
-                      <svg className="mr-3 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
-                      </svg>
-                      ユーザー管理
-                    </a>
-                  )}
-                  {hasUserPageAccess(user, 'adminSystem') && (
-                    <a
-                      href="/admin/system"
-                      className="group flex items-center px-3 py-3 md:py-2 text-sm font-medium text-gray-700 rounded-lg hover:bg-blue-50 hover:text-blue-600"
-                    >
-                      <svg className="mr-3 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                      </svg>
-                      システム設定
-                    </a>
-                  )}
-                  {hasUserPageAccess(user, 'adminPartners') && (
-                    <a
-                      href="/admin/partners"
-                      className="group flex items-center px-3 py-3 md:py-2 text-sm font-medium text-gray-700 rounded-lg hover:bg-blue-50 hover:text-blue-600"
-                    >
-                      <svg className="mr-3 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2-2v2m8 0V6a2 2 0 012 2v6M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M8 6a2 2 0 00-2 2v6a2 2 0 002 2h8a2 2 0 002-2V8a2 2 0 00-2-2" />
-                      </svg>
-                      パートナー管理
-                    </a>
-                  )}
-                  {hasUserPageAccess(user, 'bulkEdit') && (
-                    <a
-                      href="/admin/bulk-edit"
-                      className="group flex items-center px-3 py-3 md:py-2 text-sm font-medium text-gray-700 rounded-lg hover:bg-blue-50 hover:text-blue-600"
-                    >
-                      <svg className="mr-3 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                      </svg>
-                      一括修正管理
-                    </a>
-                  )}
+            {(isUserAdmin(user) ||
+              hasUserPageAccess(user, 'adminUsers') ||
+              hasUserPageAccess(user, 'adminSystem') ||
+              hasUserPageAccess(user, 'adminPartners') ||
+              hasUserPageAccess(user, 'bulkEdit')) && (
+                <div>
+                  <h3 className="px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">管理者メニュー</h3>
+                  <div className="space-y-2">
+                    {hasUserPageAccess(user, 'adminUsers') && (
+                      <a
+                        href="/admin/users"
+                        className="group flex items-center px-3 py-3 md:py-2 text-sm font-medium text-gray-700 rounded-lg hover:bg-blue-50 hover:text-blue-600"
+                      >
+                        <svg className="mr-3 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
+                        </svg>
+                        ユーザー管理
+                      </a>
+                    )}
+                    {hasUserPageAccess(user, 'adminSystem') && (
+                      <a
+                        href="/admin/system"
+                        className="group flex items-center px-3 py-3 md:py-2 text-sm font-medium text-gray-700 rounded-lg hover:bg-blue-50 hover:text-blue-600"
+                      >
+                        <svg className="mr-3 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                        システム設定
+                      </a>
+                    )}
+                    {hasUserPageAccess(user, 'adminPartners') && (
+                      <a
+                        href="/admin/partners"
+                        className="group flex items-center px-3 py-3 md:py-2 text-sm font-medium text-gray-700 rounded-lg hover:bg-blue-50 hover:text-blue-600"
+                      >
+                        <svg className="mr-3 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2-2v2m8 0V6a2 2 0 012 2v6M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M8 6a2 2 0 00-2 2v6a2 2 0 002 2h8a2 2 0 002-2V8a2 2 0 00-2-2" />
+                        </svg>
+                        パートナー管理
+                      </a>
+                    )}
+                    {hasUserPageAccess(user, 'bulkEdit') && (
+                      <a
+                        href="/admin/bulk-edit"
+                        className="group flex items-center px-3 py-3 md:py-2 text-sm font-medium text-gray-700 rounded-lg hover:bg-blue-50 hover:text-blue-600"
+                      >
+                        <svg className="mr-3 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                        一括修正管理
+                      </a>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
           </nav>
 
           {/* ユーザープロフィール・ログアウト - 固定フッター */}

@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useAuth } from "@/components/AuthProvider";
 import TimeBaseHeader from '@/components/TimeBaseHeader';
 import { showAlert } from '@/lib/notification';
-import { isUserAdmin } from "@/lib/clientPermissions";
+import { isUserAdmin, canManageUser } from "@/lib/clientPermissions";
 import PageAccessGuard from "@/components/PageAccessGuard";
 interface Worker {
   shift: {
@@ -25,6 +25,10 @@ interface Worker {
     partner: {
       name: string;
     } | null;
+    customRole?: {
+      rank?: number;
+      name?: string;
+    };
   };
   attendances: unknown[];
   attendanceStatus: string;
@@ -439,7 +443,8 @@ export default function WorkersPage() {
                                   <div className="flex justify-center space-x-2">
                                     <button
                                       onClick={() => handleForceClock(worker)}
-                                      className="text-indigo-600 hover:text-indigo-900 text-xs"
+                                      disabled={!canManageUser(user, worker.user as any)}
+                                      className={`text-xs ${canManageUser(user, worker.user as any) ? "text-indigo-600 hover:text-indigo-900" : "text-gray-400 cursor-not-allowed"}`}
                                     >
                                       強制打刻
                                     </button>

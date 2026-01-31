@@ -1,65 +1,38 @@
-const { PrismaClient } = require('@prisma/client');
+import { PrismaClient } from "@prisma/client";
+
 const prisma = new PrismaClient();
 
 async function updateRoleRanks() {
-    console.log('Updating role ranks...');
-
     try {
-        // 1. Set SUPER_ADMIN to Rank 4 (System Admin)
-        const superAdmin = await prisma.customRole.updateMany({
-            where: {
-                OR: [
-                    { name: 'SUPER_ADMIN' },
-                    { isSystem: true }
-                ]
-            },
-            data: { rank: 4 }
-        });
-        console.log(`Updated SUPER_ADMIN rank: ${superAdmin.count} roles`);
+        console.log("開始: ロールランク更新");
 
-        // 2. Set MANAGER_G to Rank 3 (Upper Manager)
-        const manager = await prisma.customRole.updateMany({
-            where: { name: 'MANAGER_G' },
-            data: { rank: 3 }
-        });
-        console.log(`Updated MANAGER_G rank: ${manager.count} roles`);
+        const roleDefinitions = [
+            { name: "SUPER_ADMIN", rank: 4 }, // システム管理者
+            { name: "MANAGER", rank: 2 },     // 管理者
+            { name: "PARTNER_MANAGER", rank: 1 }, // パートナー管理者/リーダー
+            { name: "STAFF", rank: 0 },       // スタッフ
+            { name: "PARTNER_STAFF", rank: 0 }, // パートナースタッフ
+        ];
 
-        // 3. Set other Managers/Leaders to Rank 2
-        // Find roles that might be managers but not SUPER_ADMIN or MANAGER_G
-        const allRoles = await prisma.customRole.findMany({
-            where: {
-                AND: [
-                    { name: { not: 'SUPER_ADMIN' } },
-                    { name: { not: 'MANAGER_G' } },
-                    { isSystem: false }
-                ]
-            }
-        });
+        for (const def of roleDefinitions) {
+            const role = await prisma.customRole.findUnique({
+                where: { name: def.name },
+            });
 
-        for (const role of allRoles) {
-            if (role.name.toUpperCase().includes('MANAGER') ||
-                role.name.toUpperCase().includes('LEADER') ||
-                role.name.toUpperCase().includes('ADMIN')) {
-
+            if (role) {
                 await prisma.customRole.update({
                     where: { id: role.id },
-                    data: { rank: 2 }
+                    data: { rank: def.rank },
                 });
-                console.log(`Updated ${role.name} to Rank 2`);
+                console.log(`✓ ${def.name} のランクを ${def.rank} に更新しました`);
             } else {
-                // Default to Rank 1 (Staff)
-                await prisma.customRole.update({
-                    where: { id: role.id },
-                    data: { rank: 1 }
-                });
-                console.log(`Set ${role.name} to Rank 1 (Default)`);
+                console.warn(`⚠ ${def.name} が見つかりませんでした`);
             }
         }
 
-        console.log('Role rank update completed!');
-
+        console.log("✅ ロールランク更新完了");
     } catch (error) {
-        console.error('Error updating ranks:', error);
+        console.error("❌ エラーが発生しました:", error);
     } finally {
         await prisma.$disconnect();
     }

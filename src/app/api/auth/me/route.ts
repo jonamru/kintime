@@ -29,7 +29,7 @@ export async function GET(request: Request) {
 
     // トークンを検証
     const decoded = jwt.verify(token, JWT_SECRET_STRING) as JWTPayload;
-    
+
     // ユーザー情報を取得
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
@@ -47,6 +47,7 @@ export async function GET(request: Request) {
             displayName: true,
             permissions: true,
             pageAccess: true,
+            rank: true,
           },
         },
       },

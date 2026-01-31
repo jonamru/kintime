@@ -86,7 +86,8 @@ export async function POST(request: Request) {
             const parts = recordId.split('-');
             if (parts.length >= 5) {
               const dateStr = `${parts[1]}-${parts[2]}-${parts[3]}`;
-              const userId = parts[4];
+              // UUIDにはハイフンが含まれるため、parts[4]以降を結合する
+              const userId = parts.slice(4).join('-');
 
               // その日の該当する打刻記録を検索
               const targetDate = new Date(dateStr);

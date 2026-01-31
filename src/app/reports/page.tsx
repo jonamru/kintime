@@ -83,9 +83,19 @@ function ReportsContent() {
       const response = await fetch('/api/auth/me')
       if (response.ok) {
         const data = await response.json()
-        setCurrentUser(data)
-        if (data?.id) {
-          setSelectedUserId(data.id)
+        // API returns { user: ..., permissions: ..., pageAccess: ... }
+        // We need to set the user object correctly
+        if (data.user) {
+          setCurrentUser(data.user)
+          if (data.user.id) {
+            setSelectedUserId(data.user.id)
+          }
+        } else {
+          // Fallback for unexpected response structure
+          setCurrentUser(data)
+          if (data?.id) {
+            setSelectedUserId(data.id)
+          }
         }
       }
     } catch (error: unknown) {
@@ -393,6 +403,16 @@ function ReportsContent() {
     selectedAttendanceUserIds, selectedExpenseUserIds, selectedUserIds,
     selectedPartnerId, showShiftLocation, router])
 
+  const navigateMonth = useCallback((direction: number) => {
+    if (!selectedMonth) return
+    const [yearStr, monthStr] = selectedMonth.split('-')
+    const currentDate = new Date(parseInt(yearStr), parseInt(monthStr) - 1, 1)
+    currentDate.setMonth(currentDate.getMonth() + direction)
+    const newYear = currentDate.getFullYear()
+    const newMonth = String(currentDate.getMonth() + 1).padStart(2, '0')
+    setSelectedMonth(`${newYear}-${newMonth}`)
+  }, [selectedMonth])
+
   return (
     <PageAccessGuard page="reports">
       <TimeBaseHeader
@@ -409,9 +429,9 @@ function ReportsContent() {
           </a>
         }
       />
-      <div className="container mx-auto px-4 py-6">
+      <div className="container mx-auto px-4 py-6 bg-white min-h-screen">
         <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-bold">レポート管理</h1>
+          <h1 className="text-2xl font-bold text-gray-900">レポート管理</h1>
         </div>
 
         <div className="mb-6">
@@ -457,23 +477,41 @@ function ReportsContent() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-gray-900 mb-2">
               対象年月
             </label>
-            <input
-              type="month"
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(e.target.value)}
-              className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => navigateMonth(-1)}
+                className="p-2 border border-gray-300 rounded-md hover:bg-gray-100 bg-white text-gray-900"
+                type="button"
+                title="前月"
+              >
+                ←
+              </button>
+              <input
+                type="month"
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(e.target.value)}
+                className="flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <button
+                onClick={() => navigateMonth(1)}
+                className="p-2 border border-gray-300 rounded-md hover:bg-gray-100 bg-white text-gray-900"
+                type="button"
+                title="次月"
+              >
+                →
+              </button>
+            </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-gray-900 mb-2">
               対象範囲
             </label>
             {activeTab === 'attendance' ? (
               <div className="space-y-2">
-                <label className="flex items-center">
+                <label className="flex items-center text-gray-900">
                   <input
                     type="radio"
                     value="user"
@@ -483,7 +521,7 @@ function ReportsContent() {
                   />
                   選択したユーザー
                 </label>
-                <label className="flex items-center">
+                <label className="flex items-center text-gray-900">
                   <input
                     type="radio"
                     value="company"
@@ -494,7 +532,7 @@ function ReportsContent() {
                   所属会社
                 </label>
                 {canViewAllAttendance && (
-                  <label className="flex items-center">
+                  <label className="flex items-center text-gray-900">
                     <input
                       type="radio"
                       value="all"
@@ -508,7 +546,7 @@ function ReportsContent() {
               </div>
             ) : activeTab === 'expense' ? (
               <div className="space-y-2">
-                <label className="flex items-center">
+                <label className="flex items-center text-gray-900">
                   <input
                     type="radio"
                     value="user"
@@ -518,7 +556,7 @@ function ReportsContent() {
                   />
                   選択したユーザー
                 </label>
-                <label className="flex items-center">
+                <label className="flex items-center text-gray-900">
                   <input
                     type="radio"
                     value="company"
@@ -529,7 +567,7 @@ function ReportsContent() {
                   所属会社
                 </label>
                 {canViewAllExpense && (
-                  <label className="flex items-center">
+                  <label className="flex items-center text-gray-900">
                     <input
                       type="radio"
                       value="all"
@@ -543,7 +581,7 @@ function ReportsContent() {
               </div>
             ) : activeTab === 'shift' ? (
               <div className="space-y-2">
-                <label className="flex items-center">
+                <label className="flex items-center text-gray-900">
                   <input
                     type="radio"
                     value="user"
@@ -553,7 +591,7 @@ function ReportsContent() {
                   />
                   選択したユーザー（複数選択可）
                 </label>
-                <label className="flex items-center">
+                <label className="flex items-center text-gray-900">
                   <input
                     type="radio"
                     value="company"
@@ -564,7 +602,7 @@ function ReportsContent() {
                   所属会社
                 </label>
                 {canViewAllShift && (
-                  <label className="flex items-center">
+                  <label className="flex items-center text-gray-900">
                     <input
                       type="radio"
                       value="all"
@@ -583,7 +621,7 @@ function ReportsContent() {
         {/* 勤務管理表用会社選択セクション */}
         {activeTab === 'attendance' && attendanceScope === 'company' && (
           <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-gray-900 mb-2">
               所属会社を選択
             </label>
             <select
@@ -610,7 +648,7 @@ function ReportsContent() {
         {activeTab === 'attendance' && attendanceScope === 'user' && (
           <div className="mb-6 bg-gray-50 p-4 rounded-lg">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-medium">
+              <h3 className="text-sm font-medium text-gray-900">
                 ユーザー選択 ({selectedAttendanceUserIds.length}名選択中)
               </h3>
               <div className="flex space-x-2">
@@ -661,8 +699,8 @@ function ReportsContent() {
                       className="mr-3 h-4 w-4"
                     />
                     <div>
-                      <div className="text-sm font-medium">{user.name}</div>
-                      <div className="text-xs text-gray-500">
+                      <div className="text-sm font-medium text-gray-900">{user.name}</div>
+                      <div className="text-xs text-gray-700">
                         ID: {user.userId || user.id}
                         {user.partner?.name && ` - ${user.partner.name}`}
                       </div>
@@ -681,7 +719,7 @@ function ReportsContent() {
         {/* 経費管理表用会社選択セクション */}
         {activeTab === 'expense' && expenseScope === 'company' && (
           <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-gray-900 mb-2">
               所属会社を選択
             </label>
             <select
@@ -708,7 +746,7 @@ function ReportsContent() {
         {activeTab === 'expense' && expenseScope === 'user' && (
           <div className="mb-6 bg-gray-50 p-4 rounded-lg">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-medium">
+              <h3 className="text-sm font-medium text-gray-900">
                 ユーザー選択 ({selectedExpenseUserIds.length}名選択中)
               </h3>
               <div className="flex space-x-2">
@@ -759,8 +797,8 @@ function ReportsContent() {
                       className="mr-3 h-4 w-4"
                     />
                     <div>
-                      <div className="text-sm font-medium">{user.name}</div>
-                      <div className="text-xs text-gray-500">
+                      <div className="text-sm font-medium text-gray-900">{user.name}</div>
+                      <div className="text-xs text-gray-700">
                         ID: {user.userId || user.id}
                         {user.partner?.name && ` - ${user.partner.name}`}
                       </div>
@@ -806,7 +844,7 @@ function ReportsContent() {
         {activeTab === 'shift' && shiftScope === 'user' && (
           <div className="mb-6 bg-gray-50 p-4 rounded-lg">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-medium">
+              <h3 className="text-sm font-medium text-gray-900">
                 ユーザー選択 ({selectedUserIds.length}名選択中)
               </h3>
               <div className="flex space-x-2">
@@ -858,8 +896,8 @@ function ReportsContent() {
                       className="mr-3 h-4 w-4"
                     />
                     <div>
-                      <div className="text-sm font-medium">{user.name}</div>
-                      <div className="text-xs text-gray-500">
+                      <div className="text-sm font-medium text-gray-900">{user.name}</div>
+                      <div className="text-xs text-gray-700">
                         ID: {user.userId || user.id}
                         {user.partner?.name && ` - ${user.partner.name}`}
                       </div>
@@ -882,7 +920,7 @@ function ReportsContent() {
               レポートタイプ
             </label>
             <div className="flex flex-col space-y-2">
-              <label className="flex items-center">
+              <label className="flex items-center text-gray-900">
                 <input
                   type="radio"
                   value="full"
@@ -892,7 +930,7 @@ function ReportsContent() {
                 />
                 全情報表示版
               </label>
-              <label className="flex items-center">
+              <label className="flex items-center text-gray-900">
                 <input
                   type="radio"
                   value="submission"
@@ -902,7 +940,7 @@ function ReportsContent() {
                 />
                 提出用（基本）
               </label>
-              <label className="flex items-center">
+              <label className="flex items-center text-gray-900">
                 <input
                   type="radio"
                   value="submission_with_expenses"
@@ -922,7 +960,7 @@ function ReportsContent() {
             <label className="block text-sm font-medium text-gray-700 mb-2">
               表示オプション
             </label>
-            <div className="flex items-center">
+            <div className="flex items-center text-gray-900">
               <input
                 type="checkbox"
                 id="showShiftLocation"
@@ -943,7 +981,7 @@ function ReportsContent() {
             PDF向き（PDF出力時のみ）
           </label>
           <div className="flex space-x-4">
-            <label className="flex items-center">
+            <label className="flex items-center text-gray-900">
               <input
                 type="radio"
                 value="portrait"
@@ -953,7 +991,7 @@ function ReportsContent() {
               />
               縦向き
             </label>
-            <label className="flex items-center">
+            <label className="flex items-center text-gray-900">
               <input
                 type="radio"
                 value="landscape"

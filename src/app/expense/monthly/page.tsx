@@ -181,6 +181,7 @@ export default function MonthlyExpensePage() {
   const navigateMonth = useCallback((direction: number) => {
     setCurrentMonth(prev => {
       const newMonth = new Date(prev);
+      newMonth.setDate(1);
       newMonth.setMonth(prev.getMonth() + direction);
       return newMonth;
     });

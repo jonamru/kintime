@@ -16,6 +16,7 @@ export interface AuthUser {
     displayName: string;
     permissions: Record<string, unknown>;
     pageAccess: Record<string, unknown>;
+    rank?: number;
   };
   partnerId?: string;
   partner?: {
@@ -87,6 +88,7 @@ export async function getCurrentUser(request: NextRequest | Request): Promise<Au
             displayName: true,
             permissions: true,
             pageAccess: true,
+            rank: true,
           },
         },
       },

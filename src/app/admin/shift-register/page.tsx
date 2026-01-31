@@ -4,8 +4,13 @@ import { useState, useEffect } from "react";
 import TimeBaseHeader from '@/components/TimeBaseHeader';
 import PageAccessGuard from "@/components/PageAccessGuard";
 import { showAlert, showNotification } from '@/lib/notification';
+import { useAuth } from "@/components/AuthProvider";
+import { canManageUser } from "@/lib/clientPermissions";
+
 import UserSearchCombobox from '@/components/UserSearchCombobox';
+
 export default function AdminShiftRegisterPage() {
+  const { user: currentUser } = useAuth();
   interface User {
     id: string;
     name: string;
@@ -13,6 +18,10 @@ export default function AdminShiftRegisterPage() {
     userId: string;
     defaultLocation?: string;
     partner?: { name: string };
+    customRole?: {
+      rank?: number;
+      name?: string;
+    };
   }
   const [users, setUsers] = useState<User[]>([]);
   const [selectedUser, setSelectedUser] = useState<string>("");
@@ -74,7 +83,7 @@ export default function AdminShiftRegisterPage() {
 
   const fetchUsers = async () => {
     try {
-      const response = await fetch("/api/admin/users");
+      const response = await fetch("/api/admin/users?details=true");
       if (response.ok) {
         const data = await response.json();
         setUsers(data.users || []);
@@ -128,6 +137,7 @@ export default function AdminShiftRegisterPage() {
   const navigateMonth = (direction: number) => {
     setCurrentMonth(prev => {
       const newMonth = new Date(prev);
+      newMonth.setDate(1);
       newMonth.setMonth(prev.getMonth() + direction);
       return newMonth;
     });
@@ -302,8 +312,8 @@ export default function AdminShiftRegisterPage() {
                             key={index}
                             onClick={() => toggleDate(day.dateString, day.isPast, day.isCurrentMonth)}
                             className={`
-                            p-3 text-center cursor-pointer border border-gray-200 min-h-[60px] flex flex-col justify-center
-                            ${!day.isCurrentMonth ? 'text-gray-300 bg-gray-50' : 'text-gray-900'}
+                            p-3 text-center cursor-pointer border border-gray-200 min-h-[60px] flex flex-col justify-center font-medium
+                            ${!day.isCurrentMonth ? 'text-gray-400 bg-gray-50' : 'text-gray-900'}
                             ${day.isToday ? 'bg-blue-100 border-blue-300' : ''}
                             ${selectedDates.includes(day.dateString) ? 'bg-indigo-600 text-white' : ''}
                             ${hasShift ? 'bg-green-100 border-green-300' : ''}
@@ -445,7 +455,7 @@ export default function AdminShiftRegisterPage() {
                         </button>
                         <button
                           type="submit"
-                          disabled={loading || !selectedUser || selectedDates.length === 0}
+                          disabled={loading || !selectedUser || selectedDates.length === 0 || (!!selectedUser && !!currentUser && !canManageUser(currentUser, users.find(u => u.id === selectedUser) as any))}
                           className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700 disabled:bg-gray-400"
                         >
                           {loading ? "登録中..." : "登録"}
@@ -455,6 +465,35 @@ export default function AdminShiftRegisterPage() {
                   </div>
                 </div>
               </div>
+
+              {/* 権限チェックの警告表示 */}
+              {selectedUser && currentUser && (() => {
+                const targetUser = users.find(u => u.id === selectedUser);
+                if (targetUser && !canManageUser(currentUser, targetUser)) {
+                  return (
+                    <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-md">
+                      <div className="flex">
+                        <div className="flex-shrink-0">
+                          <svg className="h-5 w-5 text-red-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                          </svg>
+                        </div>
+                        <div className="ml-3">
+                          <h3 className="text-sm font-medium text-red-800">
+                            操作権限がありません
+                          </h3>
+                          <div className="mt-2 text-sm text-red-700">
+                            <p>
+                              選択されたユーザー ({targetUser.name}) は、あなたより上位の権限を持っているため操作できません。
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
 
               <div className="mt-6">
                 <a

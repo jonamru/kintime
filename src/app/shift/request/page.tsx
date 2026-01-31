@@ -243,6 +243,7 @@ export default function ShiftRequestPage() {
   const navigateMonth = (direction: number) => {
     setCurrentMonth(prev => {
       const newMonth = new Date(prev);
+      newMonth.setDate(1); // 1日にセットして月末問題（例：1/31 -> 2月への遷移で3月になる）を回避
       newMonth.setMonth(prev.getMonth() + direction);
       return newMonth;
     });
@@ -452,7 +453,7 @@ export default function ShiftRequestPage() {
     const isSelected = selectedDates.includes(day.dateString);
 
 
-    let baseClass = "w-full h-full flex items-center justify-center text-sm rounded-lg cursor-pointer transition-colors ";
+    let baseClass = "w-full h-full flex items-center justify-center text-sm font-medium rounded-lg cursor-pointer transition-colors ";
 
     if (!day.isCurrentMonth) {
       baseClass += "bg-gray-50 text-gray-400 cursor-not-allowed";
@@ -465,9 +466,9 @@ export default function ShiftRequestPage() {
     } else if (day.isPast && !day.isPastSelectable) {
       baseClass += "bg-gray-50 text-gray-400 cursor-not-allowed";
     } else if (day.isToday) {
-      baseClass += "bg-blue-50 text-blue-700 hover:bg-blue-100";
+      baseClass += "bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold";
     } else {
-      baseClass += "bg-white hover:bg-gray-50";
+      baseClass += "bg-white text-gray-900 hover:bg-gray-50";
     }
 
     return baseClass;
